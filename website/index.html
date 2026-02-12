@@ -196,6 +196,54 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 /* No data message */
 .dp-empty { color: #556677; font-size: 13px; font-style: italic; padding: 8px 0; }
+
+/* ── Weak spot markers ── */
+.weak-spot-marker { width: 30px; height: 30px; margin-left: -15px; margin-top: -15px; background: none; border: none; }
+.weak-spot-pulse {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(211, 47, 47, 0.2);
+    border: 2px solid rgba(211, 47, 47, 0.7);
+    animation: weak-pulse 2s ease-in-out infinite;
+    cursor: pointer;
+}
+@keyframes weak-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.7; border-color: rgba(211, 47, 47, 0.7); }
+    50% { transform: scale(1.3); opacity: 1; border-color: rgba(255, 50, 50, 1); }
+}
+
+/* ── AI Insights button ── */
+.ai-btn {
+    width: 100%; padding: 10px 14px;
+    background: linear-gradient(135deg, #e94560 0%, #c23152 100%);
+    color: #fff; border: none; border-radius: 8px;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: opacity 0.2s;
+    display: flex; align-items: center; gap: 8px;
+}
+.ai-btn:hover { opacity: 0.85; }
+.ai-btn .ai-icon { font-size: 16px; }
+
+/* ── AI issue cards in detail panel ── */
+.ai-issue-card {
+    background: #1a1a2e; border-radius: 6px;
+    padding: 10px 12px; margin-bottom: 8px;
+    border-left: 3px solid #f57c00;
+    cursor: pointer; transition: background 0.15s;
+}
+.ai-issue-card:hover { background: #1f2040; }
+.ai-issue-card[data-severity="high"] { border-left-color: #d32f2f; }
+.ai-issue-card[data-severity="medium"] { border-left-color: #f57c00; }
+.ai-issue-card[data-severity="low"] { border-left-color: #fbc02d; }
+.ai-sev { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; }
+.ai-sev-high { background: rgba(211,47,47,0.2); color: #ef5350; }
+.ai-sev-medium { background: rgba(245,124,0,0.2); color: #ffa726; }
+.ai-sev-low { background: rgba(251,192,45,0.2); color: #fdd835; }
+
+/* AI insight badge in scan point detail */
+.ai-insight-inline {
+    background: #1a1a2e; border-radius: 6px; padding: 10px 12px;
+    border-left: 3px solid #e94560;
+}
 </style>
 </head>
 <body>
@@ -245,6 +293,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <span>Scan Points</span>
             <label class="toggle"><input type="checkbox" id="toggle-points" checked><span class="slider"></span></label>
         </div>
+        <div class="toggle-row">
+            <span>Weak Spots</span>
+            <label class="toggle"><input type="checkbox" id="toggle-weakspots" checked><span class="slider"></span></label>
+        </div>
     </div>
 
     <div class="control-group">
@@ -280,6 +332,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     </div>
 
     <div id="stats"></div>
+
+    <div class="control-group" id="ai-insights-group" style="display:none">
+        <button class="ai-btn" id="ai-insights-btn">
+            <span class="ai-icon">&#9733;</span> AI Insights
+        </button>
+    </div>
 </div>
 
 <div id="map"></div>
@@ -521,6 +579,24 @@ function openDetailPanel(sp) {
         html += `</table></div>`;
     }
 
+    // ── AI Insight for this scan point ──
+    if (DATA.ai_analysis && DATA.ai_analysis.weak_spots) {
+        const wsMatch = DATA.ai_analysis.weak_spots.find(ws =>
+            ws.point_ids && ws.point_ids.includes(sp.id));
+        if (wsMatch) {
+            const sev = wsMatch.severity || 'medium';
+            html += '<div class="dp-section">';
+            html += '<div class="dp-section-title">AI Insight</div>';
+            html += '<div class="ai-insight-inline">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+            html += '<span style="font-size:12px;color:#8899aa">' + escHtml(wsMatch.zone) + '</span>';
+            html += '<span class="ai-sev ai-sev-' + sev + '">' + sev + '</span>';
+            html += '</div>';
+            html += '<p style="font-size:13px;color:#ccdde0;margin:0">' + escHtml(wsMatch.description) + '</p>';
+            html += '</div></div>';
+        }
+    }
+
     document.getElementById('dp-body').innerHTML = html;
     detailPanel.classList.add('open');
 }
@@ -751,6 +827,128 @@ function createPointMarkers() {
     });
 }
 
+// ── Weak spot markers ───────────────────────────────────────────────────
+
+const WEAK_THRESHOLD = -75;
+const weakSpotLayer = L.layerGroup().addTo(map);
+
+function createWeakSpotMarkers() {
+    weakSpotLayer.clearLayers();
+    const band = document.getElementById('band-select').value;
+    const ssid = ssidSelect.value;
+
+    currentZone.scan_points.forEach(sp => {
+        const signalMap = band === '2g' ? sp.signals_2g : band === '5g' ? sp.signals_5g : sp.signals_any;
+        let signal;
+        if (ssid === '__ALL__') {
+            const vals = DATA.main_ssids.map(s => signalMap[s]).filter(v => v !== undefined);
+            signal = vals.length ? Math.max(...vals) : null;
+        } else {
+            signal = signalMap[ssid] !== undefined ? signalMap[ssid] : null;
+        }
+        if (signal === null || signal >= WEAK_THRESHOLD) return;
+        const icon = L.divIcon({
+            className: 'weak-spot-marker',
+            html: '<div class="weak-spot-pulse"></div>',
+            iconSize: [30, 30],
+        });
+        const marker = L.marker([IMG_H - sp.y, sp.x], { icon, bubblingMouseEvents: false });
+        marker.on('click', () => openDetailPanel(sp));
+        marker.bindTooltip(`#${sp.id}: ${Math.round(signal)} dBm (weak)`, { direction: 'top', offset: [0, -15] });
+        weakSpotLayer.addLayer(marker);
+    });
+}
+
+document.getElementById('toggle-weakspots').addEventListener('change', function() {
+    if (this.checked) weakSpotLayer.addTo(map);
+    else map.removeLayer(weakSpotLayer);
+});
+
+// ── AI Analysis panel ──────────────────────────────────────────────────
+
+function openAIInsightsPanel() {
+    if (!DATA.ai_analysis) return;
+    const ai = DATA.ai_analysis;
+
+    document.getElementById('dp-title').textContent = 'AI Analysis';
+    document.getElementById('dp-time').textContent = '';
+
+    let html = '';
+
+    // Summary
+    html += '<div class="dp-section">';
+    html += '<div class="dp-section-title">Summary</div>';
+    html += '<p style="font-size:13px;line-height:1.6;color:#ccdde0">' + escHtml(ai.summary) + '</p>';
+    html += '</div>';
+
+    // Weak Spots
+    if (ai.weak_spots && ai.weak_spots.length) {
+        html += '<div class="dp-section">';
+        html += '<div class="dp-section-title">Identified Issues (' + ai.weak_spots.length + ')</div>';
+        ai.weak_spots.forEach(ws => {
+            const sev = ws.severity || 'medium';
+            html += '<div class="ai-issue-card" data-severity="' + sev + '"'
+                + ' data-zone="' + escAttr(ws.zone) + '"'
+                + ' data-points="' + (ws.point_ids || []).join(',') + '">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+            html += '<span style="font-size:12px;color:#8899aa">' + escHtml(ws.zone) + '</span>';
+            html += '<span class="ai-sev ai-sev-' + sev + '">' + sev + '</span>';
+            html += '</div>';
+            html += '<p style="font-size:13px;color:#ccdde0;margin:0">' + escHtml(ws.description) + '</p>';
+            if (ws.point_ids && ws.point_ids.length) {
+                html += '<div style="font-size:11px;color:#667788;margin-top:4px">Points: '
+                    + ws.point_ids.map(id => '#' + id).join(', ') + '</div>';
+            }
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    // Recommendations
+    if (ai.recommendations && ai.recommendations.length) {
+        html += '<div class="dp-section">';
+        html += '<div class="dp-section-title">Recommendations</div>';
+        html += '<ol style="margin:0;padding-left:20px;font-size:13px;color:#ccdde0;line-height:1.8">';
+        ai.recommendations.forEach(rec => {
+            html += '<li style="margin-bottom:6px">' + escHtml(rec) + '</li>';
+        });
+        html += '</ol></div>';
+    }
+
+    document.getElementById('dp-body').innerHTML = html;
+    detailPanel.classList.add('open');
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// Navigate to a weak spot when clicking an issue card
+document.getElementById('dp-body').addEventListener('click', function(e) {
+    const card = e.target.closest('.ai-issue-card');
+    if (!card || !card.dataset.zone) return;
+    const zoneName = card.dataset.zone;
+    const pointIds = card.dataset.points ? card.dataset.points.split(',').map(Number) : [];
+    if (!pointIds.length) return;
+
+    const zoneIdx = DATA.zones.findIndex(z => z.name === zoneName);
+    if (zoneIdx === -1) return;
+    if (zoneIdx !== currentZoneIdx) {
+        zoneSelect.value = zoneIdx;
+        switchZone(zoneIdx);
+    }
+    const sp = currentZone.scan_points.find(s => s.id === pointIds[0]);
+    if (sp) {
+        map.setView([IMG_H - sp.y, sp.x], 1);
+        setTimeout(() => openDetailPanel(sp), 300);
+    }
+});
+
+// Show AI Insights button if analysis available
+if (DATA.ai_analysis) {
+    document.getElementById('ai-insights-group').style.display = '';
+    document.getElementById('ai-insights-btn').addEventListener('click', openAIInsightsPanel);
+}
+
 // ── Signal helpers ──────────────────────────────────────────────────────
 
 function getFilteredPoints() {
@@ -821,6 +1019,7 @@ function updateLegend() {
 function refresh() {
     updateLegend();
     createPointMarkers();
+    createWeakSpotMarkers();
     heatmapLayer._update();
 }
 
@@ -849,6 +1048,7 @@ map.on('click', closeDetailPanel);
 // Initial render
 updateLegend();
 createPointMarkers();
+createWeakSpotMarkers();
 
 })();
 </script>

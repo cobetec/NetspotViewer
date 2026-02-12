@@ -5,6 +5,7 @@ Unified WiFi Survey Script
 Extracts a .netspu file and generates:
   - Interactive website (website/ folder with index.html, data.js, map images)
   - PDF heatmap report
+  - AI-powered weak spot analysis (optional, requires Anthropic API key)
 
 Supports single-zone and multi-zone surveys.
 
@@ -12,6 +13,7 @@ Usage:
     python run.py "survey.netspu"
     python run.py "survey.netspu" --output ./my_output
     python run.py "survey.netspu" --ssid-prefix "Corp-"
+    python run.py "survey.netspu" --api-key sk-ant-...
 """
 
 import argparse
@@ -352,6 +354,7 @@ def generate_data_js(db_path, zones, output_path, main_ssids, ssid_prefix):
 
     print(f"  Exported {total_points} scan points across {len(zones)} zone(s)")
     print(f"  Main SSIDs: {main_ssids}")
+    return data
 
 
 # ── PDF Report Generation ───────────────────────────────────────────────────
@@ -742,6 +745,139 @@ def generate_pdf_report(db_path, zones, output_path, main_ssids, ssid_prefix):
     print(f"  PDF report: {output_path}")
 
 
+# ── AI Analysis ──────────────────────────────────────────────────────────────
+
+def prepare_ai_summary(data):
+    """Build a compact survey summary for Claude analysis."""
+    zones_summary = []
+    all_weak_spots = []
+    all_interference_spots = []
+    channel_usage = {'2g': defaultdict(int), '5g': defaultdict(int)}
+    seen_bssids = set()
+
+    for zone in data['zones']:
+        zone_name = zone['name']
+        signals = [sp['best_signal'] for sp in zone['scan_points'] if sp['best_signal'] is not None]
+        weak = [sp for sp in zone['scan_points']
+                if sp['best_signal'] is not None and sp['best_signal'] < -75]
+        intf = [sp for sp in zone['scan_points']
+                if sp['interference'] and
+                (sp['interference']['max_cci'] >= 3 or
+                 (sp['interference']['worst_sir'] is not None and sp['interference']['worst_sir'] < 5))]
+
+        zones_summary.append({
+            'name': zone_name,
+            'total_points': len(zone['scan_points']),
+            'avg_signal': round(sum(signals) / len(signals), 1) if signals else None,
+            'min_signal': round(min(signals), 1) if signals else None,
+            'max_signal': round(max(signals), 1) if signals else None,
+            'weak_count': len(weak),
+            'interference_count': len(intf),
+        })
+
+        for sp in weak:
+            all_weak_spots.append({
+                'zone': zone_name, 'point_id': sp['id'],
+                'x': sp['x'], 'y': sp['y'],
+                'best_signal': round(sp['best_signal'], 1),
+                'signals': {k: round(v, 1) for k, v in sp['signals_any'].items()
+                            if k in data['main_ssids']},
+            })
+
+        for sp in intf:
+            all_interference_spots.append({
+                'zone': zone_name, 'point_id': sp['id'],
+                'max_cci': sp['interference']['max_cci'],
+                'worst_sir': sp['interference']['worst_sir'],
+            })
+
+        for sp in zone['scan_points']:
+            for net in sp['networks']:
+                if not net['ssid'].startswith(data['ssid_prefix']):
+                    continue
+                if net['bssid'] in seen_bssids:
+                    continue
+                seen_bssids.add(net['bssid'])
+                band_key = '2g' if net['band'] == '2.4 GHz' else '5g'
+                channel_usage[band_key][str(net['channel'])] += 1
+
+    return {
+        'survey_name': data['survey']['name'],
+        'main_ssids': data['main_ssids'],
+        'ssid_prefix': data['ssid_prefix'],
+        'zones': zones_summary,
+        'weak_spots': all_weak_spots[:30],
+        'interference_hotspots': all_interference_spots[:20],
+        'channel_usage': {k: dict(v) for k, v in channel_usage.items()},
+    }
+
+
+def run_ai_analysis(data, api_key):
+    """Call Claude API with survey summary, return structured analysis."""
+    try:
+        import anthropic
+    except ImportError:
+        print("  Warning: 'anthropic' package not installed. Run: pip install anthropic")
+        return None
+
+    summary = prepare_ai_summary(data)
+
+    prompt = f"""Analyze this WiFi site survey and provide actionable insights.
+
+Survey: {summary['survey_name']}
+SSIDs: {', '.join(summary['main_ssids'])}
+
+Zone Statistics:
+{json.dumps(summary['zones'], indent=2)}
+
+Weak Coverage Points (signal < -75 dBm):
+{json.dumps(summary['weak_spots'], indent=2)}
+
+Interference Hotspots (CCI >= 3 or SIR < 5 dB):
+{json.dumps(summary['interference_hotspots'], indent=2)}
+
+Channel Usage (unique APs per channel):
+{json.dumps(summary['channel_usage'], indent=2)}
+
+Respond with ONLY a JSON object (no markdown, no code fences):
+{{
+  "summary": "2-3 sentence overall coverage assessment",
+  "weak_spots": [
+    {{
+      "zone": "zone name",
+      "point_ids": [list of nearby weak point IDs grouped together],
+      "description": "brief description of the coverage issue in this area",
+      "severity": "high or medium or low"
+    }}
+  ],
+  "recommendations": [
+    "actionable recommendation 1",
+    "actionable recommendation 2"
+  ]
+}}
+
+Group nearby weak points into logical clusters by proximity (similar x,y coordinates in same zone).
+Focus on practical, actionable advice for AP placement and channel optimization.
+Keep severity "high" for areas with signal < -80 dBm or high interference, "medium" for -75 to -80 dBm, "low" otherwise."""
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-5-20250929",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        text = response.content[0].text.strip()
+        if text.startswith('```'):
+            text = text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+
+        return json.loads(text)
+    except Exception as e:
+        print(f"  Warning: AI analysis failed: {e}")
+        return None
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -752,6 +888,8 @@ def main():
                         help='Output directory (default: ./output)')
     parser.add_argument('--ssid-prefix',
                         help='SSID prefix to filter on (auto-detected if omitted)')
+    parser.add_argument('--api-key',
+                        help='Anthropic API key for AI analysis (or set ANTHROPIC_API_KEY env var)')
     args = parser.parse_args()
 
     netspu_path = os.path.abspath(args.netspu)
@@ -768,7 +906,7 @@ def main():
 
     # Step 1: Extract .netspu
     extract_dir = os.path.join(output_dir, '_extracted')
-    print(f"\n[1/5] Extracting {Path(netspu_path).name}...")
+    print(f"\n[1/6] Extracting {Path(netspu_path).name}...")
     db_path = extract_netspu(netspu_path, extract_dir)
     zones = get_zones(db_path, extract_dir)
     print(f"  Found {len(zones)} zone(s): {', '.join(z['name'] for z in zones)}")
@@ -776,9 +914,9 @@ def main():
     # Step 2: Detect SSID prefix
     if args.ssid_prefix:
         ssid_prefix = args.ssid_prefix
-        print(f"\n[2/5] Using specified SSID prefix: {ssid_prefix}")
+        print(f"\n[2/6] Using specified SSID prefix: {ssid_prefix}")
     else:
-        print("\n[2/5] Auto-detecting SSID prefix...")
+        print("\n[2/6] Auto-detecting SSID prefix...")
         ssid_prefix = detect_ssid_prefix(db_path)
         if not ssid_prefix:
             print("  Warning: could not detect SSID prefix, using all SSIDs.", file=sys.stderr)
@@ -792,12 +930,12 @@ def main():
     # Step 3: Generate website data
     website_dir = os.path.join(output_dir, 'website')
     os.makedirs(website_dir, exist_ok=True)
-    print(f"\n[3/5] Generating data.js...")
-    generate_data_js(db_path, zones, os.path.join(website_dir, 'data.js'),
-                     main_ssids, ssid_prefix)
+    data_js_path = os.path.join(website_dir, 'data.js')
+    print(f"\n[3/6] Generating data.js...")
+    data = generate_data_js(db_path, zones, data_js_path, main_ssids, ssid_prefix)
 
     # Step 4: Copy website assets
-    print(f"\n[4/5] Copying website assets...")
+    print(f"\n[4/6] Copying website assets...")
     for z in zones:
         shutil.copy2(z['map_path'], os.path.join(website_dir, z['map_file']))
     src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'website')
@@ -807,8 +945,25 @@ def main():
 
     # Step 5: Generate PDF report
     pdf_path = os.path.join(output_dir, f'WiFi_Report_{safe_name}.pdf')
-    print(f"\n[5/5] Generating PDF report...")
+    print(f"\n[5/6] Generating PDF report...")
     generate_pdf_report(db_path, zones, pdf_path, main_ssids, ssid_prefix)
+
+    # Step 6: AI analysis (optional)
+    api_key = args.api_key or os.environ.get('ANTHROPIC_API_KEY')
+    if api_key:
+        print(f"\n[6/6] Running AI analysis...")
+        ai_result = run_ai_analysis(data, api_key)
+        if ai_result:
+            data['ai_analysis'] = ai_result
+            with open(data_js_path, "w", encoding="utf-8") as f:
+                f.write("const DATA = ")
+                json.dump(data, f, indent=1)
+                f.write(";\n")
+            n_ws = len(ai_result.get('weak_spots', []))
+            n_rec = len(ai_result.get('recommendations', []))
+            print(f"  AI analysis complete: {n_ws} weak spots, {n_rec} recommendations")
+    else:
+        print(f"\n[6/6] Skipping AI analysis (no API key)")
 
     # Cleanup
     shutil.rmtree(extract_dir)
