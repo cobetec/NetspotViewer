@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WiFi Planner Editor</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; height: 100vh; background: #1a1a2e; color: #e0e0e0; }
+
+/* ── Toolbar ── */
+#toolbar {
+    height: 48px; min-height: 48px; background: #0f1a2e; display: flex; align-items: center;
+    padding: 0 16px; gap: 12px; border-bottom: 1px solid #0f3460; z-index: 1001;
+}
+.tb-title { font-size: 15px; font-weight: 700; color: #e94560; margin-right: 8px; }
+#project-name {
+    background: transparent; border: 1px solid transparent; color: #e0e0e0; font-size: 13px;
+    padding: 4px 8px; border-radius: 4px; width: 180px;
+}
+#project-name:focus { border-color: #0f3460; outline: none; background: #16213e; }
+.tb-sep { width: 1px; height: 28px; background: #0f3460; }
+.tb-tool {
+    padding: 6px 14px; border-radius: 6px; border: 1px solid #0f3460; background: #16213e;
+    color: #aabbcc; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.tb-tool:hover { border-color: #e94560; color: #e0e0e0; }
+.tb-tool.active { background: #e94560; color: #fff; border-color: #e94560; }
+.tb-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.tb-right select {
+    padding: 5px 8px; border-radius: 4px; border: 1px solid #0f3460;
+    background: #16213e; color: #e0e0e0; font-size: 12px;
+}
+.tb-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; color: #aabbcc; }
+.tb-toggle input { accent-color: #e94560; }
+.tb-btn-export {
+    padding: 6px 16px; border-radius: 6px; border: none;
+    background: linear-gradient(135deg, #e94560 0%, #c23152 100%);
+    color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+}
+.tb-btn-export:hover { opacity: 0.85; }
+.tb-btn-export:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Main area ── */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ── */
+#sidebar {
+    width: 280px; min-width: 280px; background: #16213e; padding: 14px;
+    display: flex; flex-direction: column; gap: 12px; overflow-y: auto;
+    border-right: 1px solid #0f3460; z-index: 1000;
+}
+.panel { background: #1a1a2e; border-radius: 8px; padding: 12px; }
+.panel-title {
+    font-size: 11px; font-weight: 700; color: #e94560; text-transform: uppercase;
+    letter-spacing: 0.8px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #0f3460;
+}
+.panel label { display: block; font-size: 12px; color: #aabbcc; margin-bottom: 4px; }
+.panel select, .panel input[type="number"], .panel input[type="text"] {
+    width: 100%; padding: 5px 8px; border-radius: 4px; border: 1px solid #0f3460;
+    background: #16213e; color: #e0e0e0; font-size: 13px; margin-bottom: 8px;
+}
+.panel select:focus, .panel input:focus { outline: none; border-color: #e94560; }
+.panel .hint { font-size: 11px; color: #667788; line-height: 1.5; margin-bottom: 8px; }
+.panel .value-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+.panel .value-row .lbl { color: #8899aa; }
+.panel .value-row .val { color: #e0e0e0; font-family: Consolas, monospace; font-weight: 600; }
+.btn-sm {
+    padding: 5px 12px; border-radius: 4px; border: 1px solid #0f3460;
+    background: #16213e; color: #aabbcc; font-size: 12px; cursor: pointer; transition: all 0.15s;
+}
+.btn-sm:hover { border-color: #e94560; color: #e0e0e0; }
+.btn-danger { border-color: #d32f2f; color: #ef5350; }
+.btn-danger:hover { background: #d32f2f; color: #fff; }
+.btn-primary { background: #e94560; color: #fff; border-color: #e94560; }
+.btn-primary:hover { opacity: 0.85; }
+.btn-row { display: flex; gap: 6px; margin-top: 4px; }
+
+/* Item lists */
+.item-list { max-height: 200px; overflow-y: auto; }
+.item-row {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px;
+    font-size: 12px; cursor: pointer; transition: background 0.15s;
+}
+.item-row:hover { background: rgba(233,69,96,0.1); }
+.item-row.selected { background: rgba(233,69,96,0.2); }
+.item-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.item-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-info { color: #667788; font-size: 11px; }
+.item-del { color: #667788; font-size: 14px; cursor: pointer; padding: 0 4px; }
+.item-del:hover { color: #ef5350; }
+
+/* ── Map ── */
+#map { flex: 1; background: #111; cursor: crosshair; }
+
+/* ── Upload overlay ── */
+#upload-overlay {
+    position: absolute; inset: 0; top: 48px; display: flex; align-items: center;
+    justify-content: center; z-index: 999; background: rgba(26,26,46,0.95);
+}
+#upload-overlay.hidden { display: none; }
+.upload-area {
+    border: 2px dashed #0f3460; border-radius: 16px; padding: 60px 80px;
+    text-align: center; color: #667788; font-size: 16px; transition: border-color 0.2s;
+    cursor: pointer;
+}
+.upload-area:hover, .upload-area.dragover { border-color: #e94560; color: #aabbcc; }
+.upload-icon { font-size: 48px; color: #0f3460; margin-bottom: 16px; }
+.upload-link { color: #e94560; cursor: pointer; text-decoration: underline; }
+
+/* ── Status bar ── */
+#statusbar {
+    height: 24px; min-height: 24px; background: #0f1a2e; display: flex; align-items: center;
+    padding: 0 16px; font-size: 11px; color: #667788; border-top: 1px solid #0f3460;
+    gap: 20px;
+}
+#statusbar .mode-indicator { color: #e94560; font-weight: 600; text-transform: uppercase; }
+
+/* ── Scale markers ── */
+.scale-marker {
+    width: 12px; height: 12px; border-radius: 50%; background: #e94560;
+    border: 2px solid #fff; margin-left: -6px; margin-top: -6px;
+}
+
+/* AP marker */
+.editor-ap-icon {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    cursor: grab; user-select: none;
+}
+.editor-ap-icon:active { cursor: grabbing; }
+.editor-ap-dot {
+    width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5); display: flex; align-items: center;
+    justify-content: center; font-size: 9px; color: #fff; font-weight: bold;
+}
+.editor-ap-label {
+    background: rgba(0,0,0,0.75); color: #fff; padding: 1px 5px; border-radius: 3px;
+    font-size: 10px; white-space: nowrap; max-width: 90px; overflow: hidden; text-overflow: ellipsis;
+}
+.editor-ap-dot.selected { box-shadow: 0 0 0 3px #e94560, 0 0 8px rgba(233,69,96,0.5); }
+
+/* Legend */
+.legend-bar { height: 14px; border-radius: 3px; background: linear-gradient(to right, #d32f2f, #f57c00, #fbc02d, #4caf50, #1b5e20); }
+.legend-labels { display: flex; justify-content: space-between; font-size: 10px; color: #8899aa; margin-top: 2px; }
+
+/* Radio group (horizontal) */
+.radio-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.radio-row label { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #aabbcc; cursor: pointer; margin-bottom: 0; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+    <span class="tb-title">WiFi Planner</span>
+    <input type="text" id="project-name" value="New Project" spellcheck="false">
+    <div class="tb-sep"></div>
+    <button class="tb-tool active" data-mode="select">Select</button>
+    <button class="tb-tool" data-mode="scale">Scale</button>
+    <button class="tb-tool" data-mode="wall">Wall</button>
+    <button class="tb-tool" data-mode="ap">AP</button>
+    <div class="tb-right">
+        <select id="band-select">
+            <option value="5g">5 GHz</option>
+            <option value="2g">2.4 GHz</option>
+            <option value="both">Both (best)</option>
+        </select>
+        <label class="tb-toggle"><input type="checkbox" id="toggle-heatmap"> Heatmap</label>
+        <button class="tb-btn-export" id="btn-export" disabled>Export .netspp</button>
+    </div>
+</div>
+
+<div id="main">
+    <div id="sidebar"></div>
+    <div id="map"></div>
+</div>
+
+<div id="upload-overlay">
+    <div class="upload-area" id="upload-area">
+        <div class="upload-icon">+</div>
+        <div>Drop floor plan image here</div>
+        <div style="margin-top:8px">or <label for="file-input" class="upload-link">browse files</label></div>
+        <input type="file" id="file-input" accept="image/*" style="display:none">
+    </div>
+</div>
+
+<div id="statusbar">
+    <span class="mode-indicator" id="status-mode">SELECT</span>
+    <span id="status-coords"></span>
+    <span id="status-hint">Upload a floor plan to begin</span>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function() {
+
+// ── Constants ────────────────────────────────────────────────────────────
+
+const MATERIALS = [
+    { id: 1, name: 'Thin wall / Drywall', absorption: 3, color: '#8D6E63' },
+    { id: 2, name: 'Concrete wall', absorption: 12, color: '#78909C' },
+    { id: 3, name: 'Glass', absorption: 2, color: '#4FC3F7' },
+    { id: 4, name: 'Wood door', absorption: 4, color: '#A1887F' },
+    { id: 5, name: 'Metal door / Elevator', absorption: 15, color: '#607D8B' },
+    { id: 6, name: 'Brick wall', absorption: 10, color: '#E57373' },
+    { id: 7, name: 'Cubicle / Partition', absorption: 2, color: '#5C5C5C' },
+    { id: 8, name: 'Floor / Ceiling', absorption: 18, color: '#455A64' },
+];
+
+const AP_MODELS = [
+    { id: 100, name: 'Generic AP' },
+    { id: 74, name: 'Cisco Meraki MR44' },
+    { id: 75, name: 'Cisco Meraki MR46E' },
+    { id: 76, name: 'Cisco Meraki MR78' },
+    { id: 80, name: 'Cisco C9120' },
+    { id: 90, name: 'Aruba AP-515' },
+    { id: 91, name: 'Aruba AP-635' },
+    { id: 95, name: 'Ubiquiti U6-Pro' },
+];
+
+const CHANNELS_2G = [1, 6, 11];
+const CHANNELS_5G = [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 149, 153, 157, 161, 165];
+const WIDTHS_5G = ['MHZ_20', 'MHZ_40', 'MHZ_80', 'MHZ_160'];
+
+const AP_COLORS = ['#4fc3f7', '#81c784', '#ffb74d', '#f06292', '#ba68c8', '#4db6ac', '#e57373', '#64b5f6'];
+
+// ── Project State ────────────────────────────────────────────────────────
+
+const project = { name: 'New Project', zones: [] };
+let currentZoneIdx = 0;
+let IMG_W = 0, IMG_H = 0;
+
+// Editor state
+let currentMode = 'select';
+let selectedItem = null; // { type: 'wall'|'ap', idx }
+let nextWallId = 1, nextApId = 1;
+
+// Scale calibration
+let scaleState = { point1: null, point2: null, markers: [], line: null };
+
+// Wall drawing
+let wallState = { startPoint: null, startMarker: null, tempLine: null };
+
+// Default AP settings
+const apDefaults = {
+    model: 100, height: 3.0,
+    radios: {
+        '2g': { channel: 1, power: 20, width: 'MHZ_20' },
+        '5g': { channel: 36, power: 20, width: 'MHZ_80' },
+    }
+};
+
+// ── Leaflet setup ────────────────────────────────────────────────────────
+
+const map = L.map('map', {
+    crs: L.CRS.Simple, minZoom: -2, maxZoom: 4,
+    zoomSnap: 0.25, zoomDelta: 0.5, attributionControl: false,
+});
+
+let imageOverlay = null;
+const scaleLayer = L.layerGroup().addTo(map);
+const wallLayer = L.layerGroup().addTo(map);
+const apMarkerLayer = L.layerGroup().addTo(map);
+let heatmapLayer = null;
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+function zone() { return project.zones[currentZoneIdx]; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function apColor(model) { return AP_COLORS[Math.abs(model) % AP_COLORS.length]; }
+function matById(id) { return MATERIALS.find(m => m.id === id) || MATERIALS[0]; }
+
+function toPixel(latlng) { return [latlng.lng, IMG_H - latlng.lat]; }
+function toLatLng(px, py) { return [IMG_H - py, px]; }
+
+// ── Image Upload ─────────────────────────────────────────────────────────
+
+const uploadOverlay = document.getElementById('upload-overlay');
+const uploadArea = document.getElementById('upload-area');
+const fileInput = document.getElementById('file-input');
+
+uploadArea.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => { if (e.target.files[0]) handleImage(e.target.files[0]); });
+
+uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) handleImage(file);
+});
+
+function handleImage(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+            const z = {
+                name: file.name.replace(/\.[^.]+$/, ''),
+                scale: null,
+                imageDataUrl: e.target.result,
+                imageBlob: null,
+                imageFileName: file.name,
+                imageWidth: img.width,
+                imageHeight: img.height,
+                walls: [],
+                aps: [],
+            };
+            // Also store binary for export
+            const r2 = new FileReader();
+            r2.onload = (e2) => { z.imageBlob = e2.target.result; };
+            r2.readAsArrayBuffer(file);
+
+            project.zones.push(z);
+            currentZoneIdx = project.zones.length - 1;
+            setupMapForZone();
+            uploadOverlay.classList.add('hidden');
+            document.getElementById('btn-export').disabled = false;
+            setMode('scale');
+            document.getElementById('status-hint').textContent = 'Calibrate the scale: click two reference points';
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function setupMapForZone() {
+    const z = zone();
+    IMG_W = z.imageWidth;
+    IMG_H = z.imageHeight;
+    if (imageOverlay) map.removeLayer(imageOverlay);
+    const bounds = [[0, 0], [IMG_H, IMG_W]];
+    imageOverlay = L.imageOverlay(z.imageDataUrl, bounds).addTo(map);
+    map.fitBounds(bounds);
+    clearScaleState();
+    rebuildWalls();
+    rebuildAPs();
+    if (heatmapLayer) heatmapLayer._update();
+    updateSidebar();
+}
+
+// ── Mode Switching ───────────────────────────────────────────────────────
+
+const toolButtons = document.querySelectorAll('.tb-tool');
+toolButtons.forEach(btn => {
+    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
+
+function setMode(mode) {
+    currentMode = mode;
+    toolButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    document.getElementById('status-mode').textContent = mode.toUpperCase();
+
+    // Cancel in-progress operations
+    cancelWallDraw();
+    if (mode !== 'scale') {} // keep scale markers
+
+    if (mode === 'select') {
+        document.getElementById('status-hint').textContent = 'Click walls or APs to select. Drag APs to move.';
+        map.getContainer().style.cursor = 'default';
+    } else if (mode === 'scale') {
+        document.getElementById('status-hint').textContent = 'Click two reference points on the map';
+        map.getContainer().style.cursor = 'crosshair';
+    } else if (mode === 'wall') {
+        selectedItem = null;
+        document.getElementById('status-hint').textContent = 'Click to start drawing walls. Double-click or ESC to finish.';
+        map.getContainer().style.cursor = 'crosshair';
+    } else if (mode === 'ap') {
+        selectedItem = null;
+        document.getElementById('status-hint').textContent = 'Click on the map to place an access point';
+        map.getContainer().style.cursor = 'crosshair';
+    }
+    updateSidebar();
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.key === 'Escape') {
+        cancelWallDraw();
+        selectedItem = null;
+        setMode('select');
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedItem) deleteSelected();
+    }
+});
+
+// ── Map Click Handler ────────────────────────────────────────────────────
+
+map.on('click', (e) => {
+    if (!zone()) return;
+
+    if (currentMode === 'scale') handleScaleClick(e.latlng);
+    else if (currentMode === 'wall') handleWallClick(e.latlng);
+    else if (currentMode === 'ap') handleAPClick(e.latlng);
+    else if (currentMode === 'select') {
+        selectedItem = null;
+        updateSidebar();
+        updateAPHighlights();
+    }
+});
+
+map.on('dblclick', (e) => {
+    if (currentMode === 'wall') {
+        cancelWallDraw();
+        L.DomEvent.stopPropagation(e);
+    }
+});
+
+map.on('mousemove', (e) => {
+    if (!zone()) return;
+    const [px, py] = toPixel(e.latlng);
+    const coordText = zone().scale
+        ? `${(px / zone().scale).toFixed(1)}m, ${(py / zone().scale).toFixed(1)}m  (${Math.round(px)}, ${Math.round(py)} px)`
+        : `${Math.round(px)}, ${Math.round(py)} px`;
+    document.getElementById('status-coords').textContent = coordText;
+
+    // Temp wall line
+    if (currentMode === 'wall' && wallState.startPoint) {
+        if (!wallState.tempLine) {
+            wallState.tempLine = L.polyline([wallState.startPoint, e.latlng], {
+                color: '#e94560', weight: 2, dashArray: '6,4', opacity: 0.7
+            }).addTo(map);
+        } else {
+            wallState.tempLine.setLatLngs([wallState.startPoint, e.latlng]);
+        }
+    }
+});
+
+// ── Scale Calibration ────────────────────────────────────────────────────
+
+function handleScaleClick(latlng) {
+    if (!scaleState.point1) {
+        scaleState.point1 = latlng;
+        const m = L.marker(latlng, {
+            icon: L.divIcon({ className: 'scale-marker', iconSize: [12, 12] })
+        }).addTo(scaleLayer);
+        scaleState.markers.push(m);
+        document.getElementById('status-hint').textContent = 'Click second reference point';
+    } else if (!scaleState.point2) {
+        scaleState.point2 = latlng;
+        const m = L.marker(latlng, {
+            icon: L.divIcon({ className: 'scale-marker', iconSize: [12, 12] })
+        }).addTo(scaleLayer);
+        scaleState.markers.push(m);
+        scaleState.line = L.polyline([scaleState.point1, scaleState.point2], {
+            color: '#e94560', weight: 2, dashArray: '6,4'
+        }).addTo(scaleLayer);
+
+        const dx = scaleState.point1.lng - scaleState.point2.lng;
+        const dy = scaleState.point1.lat - scaleState.point2.lat;
+        scaleState.pixelDist = Math.sqrt(dx*dx + dy*dy);
+        document.getElementById('status-hint').textContent = 'Enter the real-world distance in the sidebar';
+        updateSidebar();
+    }
+}
+
+function applyScale() {
+    const input = document.getElementById('scale-distance');
+    const dist = parseFloat(input.value);
+    if (!dist || dist <= 0 || !scaleState.pixelDist) return;
+    zone().scale = scaleState.pixelDist / dist;
+    document.getElementById('status-hint').textContent = `Scale set: ${zone().scale.toFixed(2)} px/m`;
+    updateSidebar();
+    if (heatmapLayer) heatmapLayer._update();
+}
+
+function clearScaleState() {
+    scaleLayer.clearLayers();
+    scaleState = { point1: null, point2: null, markers: [], line: null, pixelDist: null };
+}
+
+function resetScale() {
+    clearScaleState();
+    if (zone()) zone().scale = null;
+    document.getElementById('status-hint').textContent = 'Click two reference points on the map';
+    updateSidebar();
+}
+
+// ── Wall Drawing ─────────────────────────────────────────────────────────
+
+function handleWallClick(latlng) {
+    if (!wallState.startPoint) {
+        wallState.startPoint = latlng;
+        wallState.startMarker = L.circleMarker(latlng, {
+            radius: 5, fillColor: '#e94560', fillOpacity: 1, color: '#fff', weight: 1
+        }).addTo(map);
+    } else {
+        // Create wall segment
+        const [px1, py1] = toPixel(wallState.startPoint);
+        const [px2, py2] = toPixel(latlng);
+        const matSel = document.getElementById('wall-material');
+        const matId = matSel ? parseInt(matSel.value) : 1;
+        const mat = matById(matId);
+        const absInput = document.getElementById('wall-absorption');
+        const absorption = absInput ? parseFloat(absInput.value) : mat.absorption;
+
+        zone().walls.push({
+            id: nextWallId++,
+            start: [Math.round(px1 * 10) / 10, Math.round(py1 * 10) / 10],
+            end: [Math.round(px2 * 10) / 10, Math.round(py2 * 10) / 10],
+            material: matId,
+            absorption: absorption,
+            color: mat.color,
+        });
+
+        // Remove temp markers, continue chain from endpoint
+        if (wallState.startMarker) { map.removeLayer(wallState.startMarker); wallState.startMarker = null; }
+        if (wallState.tempLine) { map.removeLayer(wallState.tempLine); wallState.tempLine = null; }
+
+        wallState.startPoint = latlng;
+        wallState.startMarker = L.circleMarker(latlng, {
+            radius: 5, fillColor: '#e94560', fillOpacity: 1, color: '#fff', weight: 1
+        }).addTo(map);
+
+        rebuildWalls();
+        updateSidebar();
+        if (heatmapLayer) heatmapLayer._update();
+    }
+}
+
+function cancelWallDraw() {
+    if (wallState.startMarker) { map.removeLayer(wallState.startMarker); wallState.startMarker = null; }
+    if (wallState.tempLine) { map.removeLayer(wallState.tempLine); wallState.tempLine = null; }
+    wallState.startPoint = null;
+}
+
+function rebuildWalls() {
+    wallLayer.clearLayers();
+    if (!zone()) return;
+    zone().walls.forEach((w, idx) => {
+        const line = L.polyline(
+            [toLatLng(w.start[0], w.start[1]), toLatLng(w.end[0], w.end[1])],
+            { color: w.color || '#5c5c5c', weight: 3, opacity: 0.7 }
+        );
+        line.on('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            if (currentMode === 'select' || currentMode === 'wall') {
+                selectedItem = { type: 'wall', idx };
+                updateSidebar();
+                updateAPHighlights();
+            }
+        });
+        const mat = matById(w.material);
+        line.bindTooltip(`${mat.name} | ${w.absorption} dB`, { sticky: true });
+        wallLayer.addLayer(line);
+    });
+}
+
+// ── AP Placement ─────────────────────────────────────────────────────────
+
+function handleAPClick(latlng) {
+    const [px, py] = toPixel(latlng);
+    const alias = 'AP ' + nextApId;
+    const ap = {
+        id: nextApId++,
+        alias: alias,
+        px: Math.round(px * 10) / 10,
+        py: Math.round(py * 10) / 10,
+        model: apDefaults.model,
+        height: apDefaults.height,
+        radios: JSON.parse(JSON.stringify(apDefaults.radios)),
+    };
+    zone().aps.push(ap);
+    rebuildAPs();
+    selectedItem = { type: 'ap', idx: zone().aps.length - 1 };
+    updateSidebar();
+    updateAPHighlights();
+    if (heatmapLayer) heatmapLayer._update();
+}
+
+function rebuildAPs() {
+    apMarkerLayer.clearLayers();
+    if (!zone()) return;
+    zone().aps.forEach((ap, idx) => {
+        const color = apColor(ap.model);
+        const isSelected = selectedItem && selectedItem.type === 'ap' && selectedItem.idx === idx;
+        const icon = L.divIcon({
+            className: '',
+            html: '<div class="editor-ap-icon">'
+                + '<div class="editor-ap-dot' + (isSelected ? ' selected' : '') + '" style="background:' + color + '">AP</div>'
+                + '<div class="editor-ap-label">' + esc(ap.alias) + '</div>'
+                + '</div>',
+            iconSize: [80, 36], iconAnchor: [40, 11],
+        });
+        const marker = L.marker(toLatLng(ap.px, ap.py), {
+            icon, draggable: true, bubblingMouseEvents: false,
+        });
+        marker.on('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            selectedItem = { type: 'ap', idx };
+            setMode('select');
+            updateSidebar();
+            updateAPHighlights();
+        });
+        marker.on('dragend', (e) => {
+            const [px, py] = toPixel(e.target.getLatLng());
+            ap.px = Math.round(px * 10) / 10;
+            ap.py = Math.round(py * 10) / 10;
+            if (heatmapLayer) heatmapLayer._update();
+            updateSidebar();
+        });
+        apMarkerLayer.addLayer(marker);
+    });
+}
+
+function updateAPHighlights() {
+    // Rebuild to update selected state visuals
+    rebuildAPs();
+}
+
+// ── Delete selected ──────────────────────────────────────────────────────
+
+function deleteSelected() {
+    if (!selectedItem || !zone()) return;
+    if (selectedItem.type === 'wall') {
+        zone().walls.splice(selectedItem.idx, 1);
+        rebuildWalls();
+    } else if (selectedItem.type === 'ap') {
+        zone().aps.splice(selectedItem.idx, 1);
+        rebuildAPs();
+    }
+    selectedItem = null;
+    updateSidebar();
+    if (heatmapLayer) heatmapLayer._update();
+}
+
+// ── Heatmap Layer (FSPL + wall attenuation) ──────────────────────────────
+
+function rssiToRGB(rssi) {
+    const t = Math.max(0, Math.min(1, (rssi + 90) / 40));
+    let r, g, b;
+    if (t < 0.2) { const s = t / 0.2; r = 200+45*s; g = 30+70*s; b = 30-20*s; }
+    else if (t < 0.4) { const s = (t-0.2)/0.2; r = 245; g = 100+100*s; b = 10+20*s; }
+    else if (t < 0.6) { const s = (t-0.4)/0.2; r = 245-20*s; g = 200+30*s; b = 30+10*s; }
+    else if (t < 0.8) { const s = (t-0.6)/0.2; r = 225-110*s; g = 230-10*s; b = 40-10*s; }
+    else { const s = (t-0.8)/0.2; r = 115-80*s; g = 220-30*s; b = 30+10*s; }
+    return [Math.round(Math.max(0,Math.min(255,r))), Math.round(Math.max(0,Math.min(255,g))), Math.round(Math.max(0,Math.min(255,b)))];
+}
+
+function segmentsIntersect(ax,ay,bx,by,cx,cy,dx,dy) {
+    const det = (bx-ax)*(dy-cy) - (by-ay)*(dx-cx);
+    if (Math.abs(det) < 1e-10) return false;
+    const t = ((cx-ax)*(dy-cy) - (cy-ay)*(dx-cx)) / det;
+    const u = ((cx-ax)*(by-ay) - (cy-ay)*(bx-ax)) / det;
+    return t > 0 && t < 1 && u > 0 && u < 1;
+}
+
+const HeatmapLayer = L.Layer.extend({
+    onAdd(m) {
+        this._map = m;
+        this._canvas = L.DomUtil.create('canvas', 'leaflet-heatmap-layer');
+        this._canvas.style.position = 'absolute';
+        this._canvas.style.pointerEvents = 'none';
+        m.getPanes().overlayPane.appendChild(this._canvas);
+        m.on('moveend zoomend resize', this._update, this);
+        this._update();
+    },
+    onRemove(m) {
+        L.DomUtil.remove(this._canvas);
+        m.off('moveend zoomend resize', this._update, this);
+    },
+    _update() {
+        if (!this._map || !zone() || !zone().scale) return;
+        const size = this._map.getSize();
+        this._canvas.width = size.x; this._canvas.height = size.y;
+        L.DomUtil.setPosition(this._canvas, this._map.containerPointToLayerPoint([0,0]));
+        this.draw();
+    },
+    draw() {
+        const ctx = this._canvas.getContext('2d');
+        const W = this._canvas.width, H = this._canvas.height;
+        ctx.clearRect(0, 0, W, H);
+        const z = zone();
+        if (!z || !z.scale || z.aps.length === 0) return;
+
+        const band = document.getElementById('band-select').value;
+        const coordScale = z.scale;
+        const aps = [];
+        for (const ap of z.aps) {
+            if (band === '2g' || band === 'both') {
+                if (ap.radios['2g']) aps.push({ px: ap.px, py: IMG_H - ap.py, power: ap.radios['2g'].power, freqLoss: 40.2 });
+            }
+            if (band === '5g' || band === 'both') {
+                if (ap.radios['5g']) aps.push({ px: ap.px, py: IMG_H - ap.py, power: ap.radios['5g'].power, freqLoss: 46.8 });
+            }
+        }
+        if (aps.length === 0) return;
+
+        const walls = z.walls.map(w => ({
+            x1: w.start[0], y1: IMG_H - w.start[1],
+            x2: w.end[0], y2: IMG_H - w.end[1],
+            absorption: w.absorption,
+        }));
+
+        const zoom = this._map.getZoom();
+        const step = zoom >= 1 ? 2 : zoom >= 0 ? 4 : zoom >= -1 ? 6 : 8;
+        const tl = this._map.latLngToContainerPoint([IMG_H, 0]);
+        const br = this._map.latLngToContainerPoint([0, IMG_W]);
+        const minX = Math.max(0, Math.floor(tl.x)), maxX = Math.min(W, Math.ceil(br.x));
+        const minY = Math.max(0, Math.floor(tl.y)), maxY = Math.min(H, Math.ceil(br.y));
+        if (maxX <= minX || maxY <= minY) return;
+
+        const screenAPs = aps.map(a => {
+            const sp = this._map.latLngToContainerPoint([a.py, a.px]);
+            return { sx: sp.x, sy: sp.y, px: a.px, py: a.py, power: a.power, freqLoss: a.freqLoss };
+        });
+
+        const imgData = ctx.createImageData(W, H);
+        const data = imgData.data;
+        const opacity = 0.55;
+
+        for (let py = minY; py < maxY; py += step) {
+            for (let px = minX; px < maxX; px += step) {
+                const ll = this._map.containerPointToLatLng([px, py]);
+                const mapX = ll.lng, mapY = ll.lat;
+                if (mapX < 0 || mapX > IMG_W || mapY < 0 || mapY > IMG_H) continue;
+                let best = -120;
+                for (const ap of screenAPs) {
+                    const dx = mapX - ap.px, dy = mapY - ap.py;
+                    const distM = Math.max(1, Math.sqrt(dx*dx + dy*dy) / coordScale);
+                    const fspl = 20 * Math.log10(distM) + ap.freqLoss;
+                    let wl = 0;
+                    for (const w of walls) {
+                        if (segmentsIntersect(ap.px, ap.py, mapX, mapY, w.x1, w.y1, w.x2, w.y2)) wl += w.absorption;
+                    }
+                    const sig = ap.power + 5 - fspl - wl;
+                    if (sig > best) best = sig;
+                }
+                const [r, g, b] = rssiToRGB(best);
+                const alpha = Math.round(opacity * 220);
+                for (let dy2 = 0; dy2 < step && py+dy2 < maxY; dy2++) {
+                    for (let dx2 = 0; dx2 < step && px+dx2 < maxX; dx2++) {
+                        const idx = ((py+dy2)*W + (px+dx2)) * 4;
+                        data[idx]=r; data[idx+1]=g; data[idx+2]=b; data[idx+3]=alpha;
+                    }
+                }
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+    },
+});
+
+document.getElementById('toggle-heatmap').addEventListener('change', function() {
+    if (this.checked) {
+        heatmapLayer = new HeatmapLayer();
+        heatmapLayer.addTo(map);
+    } else if (heatmapLayer) {
+        map.removeLayer(heatmapLayer);
+        heatmapLayer = null;
+    }
+});
+
+document.getElementById('band-select').addEventListener('change', () => {
+    if (heatmapLayer) heatmapLayer._update();
+});
+
+// ── Sidebar Rendering ────────────────────────────────────────────────────
+
+function updateSidebar() {
+    const sb = document.getElementById('sidebar');
+    let html = '';
+
+    if (!zone()) {
+        html = '<div class="panel"><div class="panel-title">Getting Started</div><div class="hint">Upload a floor plan image to begin designing your WiFi network.</div></div>';
+        sb.innerHTML = html;
+        return;
+    }
+
+    // Zone info
+    html += '<div class="panel"><div class="panel-title">Zone</div>';
+    html += '<label>Name</label><input type="text" id="zone-name" value="' + esc(zone().name) + '">';
+    if (zone().scale) {
+        html += '<div class="value-row"><span class="lbl">Scale</span><span class="val">' + zone().scale.toFixed(2) + ' px/m</span></div>';
+        const wm = IMG_W / zone().scale, hm = IMG_H / zone().scale;
+        html += '<div class="value-row"><span class="lbl">Size</span><span class="val">' + wm.toFixed(1) + ' x ' + hm.toFixed(1) + ' m</span></div>';
+    } else {
+        html += '<div class="hint" style="color:#f57c00">Scale not set. Use the Scale tool to calibrate.</div>';
+    }
+    html += '<div class="value-row"><span class="lbl">Image</span><span class="val">' + IMG_W + ' x ' + IMG_H + ' px</span></div>';
+    html += '</div>';
+
+    // Mode-specific panel
+    if (currentMode === 'scale') {
+        html += renderScalePanel();
+    } else if (currentMode === 'wall') {
+        html += renderWallToolPanel();
+    } else if (currentMode === 'ap') {
+        html += renderAPToolPanel();
+    }
+
+    // Selected item properties
+    if (selectedItem) {
+        html += renderSelectedPanel();
+    }
+
+    // Legend
+    if (document.getElementById('toggle-heatmap').checked && zone().scale) {
+        html += '<div class="panel"><div class="panel-title">Signal Strength (dBm)</div>';
+        html += '<div class="legend-bar"></div>';
+        html += '<div class="legend-labels"><span>-90</span><span>-80</span><span>-70</span><span>-60</span><span>-50</span></div>';
+        html += '</div>';
+    }
+
+    // Item lists
+    html += renderWallList();
+    html += renderAPList();
+
+    sb.innerHTML = html;
+    attachSidebarEvents();
+}
+
+function renderScalePanel() {
+    let h = '<div class="panel"><div class="panel-title">Scale Calibration</div>';
+    if (!scaleState.point1) {
+        h += '<div class="hint">Step 1: Click first reference point on the map</div>';
+    } else if (!scaleState.point2) {
+        h += '<div class="hint">Step 2: Click second reference point</div>';
+    } else {
+        h += '<div class="value-row"><span class="lbl">Pixel distance</span><span class="val">' + scaleState.pixelDist.toFixed(1) + ' px</span></div>';
+        h += '<label>Real-world distance (meters)</label>';
+        h += '<input type="number" id="scale-distance" min="0.1" step="0.1" placeholder="e.g. 10.0">';
+        h += '<div class="btn-row"><button class="btn-sm btn-primary" id="btn-apply-scale">Apply Scale</button>';
+        h += '<button class="btn-sm" id="btn-reset-scale">Reset</button></div>';
+    }
+    h += '</div>';
+    return h;
+}
+
+function renderWallToolPanel() {
+    let h = '<div class="panel"><div class="panel-title">Wall Drawing</div>';
+    h += '<div class="hint">' + (wallState.startPoint ? 'Click to add segment. Double-click or ESC to finish.' : 'Click to start a wall chain.') + '</div>';
+    h += '<label>Material</label><select id="wall-material">';
+    MATERIALS.forEach(m => { h += '<option value="' + m.id + '">' + esc(m.name) + ' (' + m.absorption + ' dB)</option>'; });
+    h += '</select>';
+    h += '<label>Absorption (dB)</label><input type="number" id="wall-absorption" value="' + MATERIALS[0].absorption + '" min="0" max="50" step="0.5">';
+    h += '</div>';
+    return h;
+}
+
+function renderAPToolPanel() {
+    let h = '<div class="panel"><div class="panel-title">AP Placement</div>';
+    h += '<div class="hint">Click on the map to place an AP.</div>';
+    h += '<label>Model</label><select id="ap-model">';
+    AP_MODELS.forEach(m => {
+        h += '<option value="' + m.id + '"' + (m.id === apDefaults.model ? ' selected' : '') + '>' + esc(m.name) + '</option>';
+    });
+    h += '</select>';
+    h += '<label>Height (m)</label><input type="number" id="ap-height" value="' + apDefaults.height + '" min="0.5" max="20" step="0.5">';
+
+    h += '<div class="panel-title" style="margin-top:10px">2.4 GHz Radio</div>';
+    h += '<label>Channel</label><select id="ap-ch2g">';
+    CHANNELS_2G.forEach(c => { h += '<option value="' + c + '"' + (c === apDefaults.radios['2g'].channel ? ' selected' : '') + '>' + c + '</option>'; });
+    h += '</select>';
+    h += '<label>TX Power (dBm)</label><input type="number" id="ap-pow2g" value="' + apDefaults.radios['2g'].power + '" min="1" max="30">';
+
+    h += '<div class="panel-title" style="margin-top:10px">5 GHz Radio</div>';
+    h += '<label>Channel</label><select id="ap-ch5g">';
+    CHANNELS_5G.forEach(c => { h += '<option value="' + c + '"' + (c === apDefaults.radios['5g'].channel ? ' selected' : '') + '>' + c + '</option>'; });
+    h += '</select>';
+    h += '<label>TX Power (dBm)</label><input type="number" id="ap-pow5g" value="' + apDefaults.radios['5g'].power + '" min="1" max="30">';
+    h += '<label>Width</label><select id="ap-w5g">';
+    WIDTHS_5G.forEach(w => { h += '<option value="' + w + '"' + (w === apDefaults.radios['5g'].width ? ' selected' : '') + '>' + w.replace('MHZ_', '') + ' MHz</option>'; });
+    h += '</select>';
+    h += '</div>';
+    return h;
+}
+
+function renderSelectedPanel() {
+    if (!selectedItem || !zone()) return '';
+    let h = '<div class="panel">';
+    if (selectedItem.type === 'wall') {
+        const w = zone().walls[selectedItem.idx];
+        if (!w) return '';
+        h += '<div class="panel-title">Wall Properties</div>';
+        h += '<label>Material</label><select id="sel-wall-mat">';
+        MATERIALS.forEach(m => { h += '<option value="' + m.id + '"' + (m.id === w.material ? ' selected' : '') + '>' + esc(m.name) + '</option>'; });
+        h += '</select>';
+        h += '<label>Absorption (dB)</label><input type="number" id="sel-wall-abs" value="' + w.absorption + '" min="0" max="50" step="0.5">';
+        if (zone().scale) {
+            const dx = w.end[0] - w.start[0], dy = w.end[1] - w.start[1];
+            const lenM = Math.sqrt(dx*dx + dy*dy) / zone().scale;
+            h += '<div class="value-row"><span class="lbl">Length</span><span class="val">' + lenM.toFixed(1) + ' m</span></div>';
+        }
+        h += '<div class="btn-row" style="margin-top:8px"><button class="btn-sm btn-danger" id="btn-del-selected">Delete Wall</button></div>';
+    } else if (selectedItem.type === 'ap') {
+        const ap = zone().aps[selectedItem.idx];
+        if (!ap) return '';
+        h += '<div class="panel-title">AP Properties</div>';
+        h += '<label>Alias</label><input type="text" id="sel-ap-alias" value="' + esc(ap.alias) + '">';
+        h += '<label>Model</label><select id="sel-ap-model">';
+        AP_MODELS.forEach(m => { h += '<option value="' + m.id + '"' + (m.id === ap.model ? ' selected' : '') + '>' + esc(m.name) + '</option>'; });
+        h += '</select>';
+        h += '<label>Height (m)</label><input type="number" id="sel-ap-height" value="' + ap.height + '" min="0.5" max="20" step="0.5">';
+        if (zone().scale) {
+            h += '<div class="value-row"><span class="lbl">Position</span><span class="val">' + (ap.px / zone().scale).toFixed(1) + 'm, ' + (ap.py / zone().scale).toFixed(1) + 'm</span></div>';
+        }
+        h += '<div class="panel-title" style="margin-top:10px">2.4 GHz Radio</div>';
+        h += '<label>Channel</label><select id="sel-ch2g">';
+        CHANNELS_2G.forEach(c => { h += '<option value="' + c + '"' + (c === ap.radios['2g'].channel ? ' selected' : '') + '>' + c + '</option>'; });
+        h += '</select>';
+        h += '<label>TX Power (dBm)</label><input type="number" id="sel-pow2g" value="' + ap.radios['2g'].power + '" min="1" max="30">';
+
+        h += '<div class="panel-title" style="margin-top:10px">5 GHz Radio</div>';
+        h += '<label>Channel</label><select id="sel-ch5g">';
+        CHANNELS_5G.forEach(c => { h += '<option value="' + c + '"' + (c === ap.radios['5g'].channel ? ' selected' : '') + '>' + c + '</option>'; });
+        h += '</select>';
+        h += '<label>TX Power (dBm)</label><input type="number" id="sel-pow5g" value="' + ap.radios['5g'].power + '" min="1" max="30">';
+        h += '<label>Width</label><select id="sel-w5g">';
+        WIDTHS_5G.forEach(w2 => { h += '<option value="' + w2 + '"' + (w2 === ap.radios['5g'].width ? ' selected' : '') + '>' + w2.replace('MHZ_', '') + ' MHz</option>'; });
+        h += '</select>';
+        h += '<div class="btn-row" style="margin-top:8px"><button class="btn-sm btn-danger" id="btn-del-selected">Delete AP</button></div>';
+    }
+    h += '</div>';
+    return h;
+}
+
+function renderWallList() {
+    if (!zone() || zone().walls.length === 0) return '';
+    let h = '<div class="panel"><div class="panel-title">Walls (' + zone().walls.length + ')</div><div class="item-list">';
+    zone().walls.forEach((w, idx) => {
+        const mat = matById(w.material);
+        const sel = selectedItem && selectedItem.type === 'wall' && selectedItem.idx === idx;
+        h += '<div class="item-row' + (sel ? ' selected' : '') + '" data-type="wall" data-idx="' + idx + '">';
+        h += '<div class="item-dot" style="background:' + w.color + '"></div>';
+        h += '<span class="item-name">' + esc(mat.name) + '</span>';
+        h += '<span class="item-info">' + w.absorption + ' dB</span>';
+        h += '<span class="item-del" data-del="wall" data-idx="' + idx + '">&times;</span>';
+        h += '</div>';
+    });
+    h += '</div></div>';
+    return h;
+}
+
+function renderAPList() {
+    if (!zone() || zone().aps.length === 0) return '';
+    let h = '<div class="panel"><div class="panel-title">Access Points (' + zone().aps.length + ')</div><div class="item-list">';
+    zone().aps.forEach((ap, idx) => {
+        const sel = selectedItem && selectedItem.type === 'ap' && selectedItem.idx === idx;
+        h += '<div class="item-row' + (sel ? ' selected' : '') + '" data-type="ap" data-idx="' + idx + '">';
+        h += '<div class="item-dot" style="background:' + apColor(ap.model) + '"></div>';
+        h += '<span class="item-name">' + esc(ap.alias) + '</span>';
+        const bands = [];
+        if (ap.radios['2g']) bands.push('2.4G');
+        if (ap.radios['5g']) bands.push('5G');
+        h += '<span class="item-info">' + bands.join('/') + '</span>';
+        h += '<span class="item-del" data-del="ap" data-idx="' + idx + '">&times;</span>';
+        h += '</div>';
+    });
+    h += '</div></div>';
+    return h;
+}
+
+function attachSidebarEvents() {
+    // Zone name
+    const zn = document.getElementById('zone-name');
+    if (zn) zn.addEventListener('change', () => { zone().name = zn.value; });
+
+    // Project name
+    document.getElementById('project-name').addEventListener('change', function() { project.name = this.value; });
+
+    // Scale
+    const btnScale = document.getElementById('btn-apply-scale');
+    if (btnScale) btnScale.addEventListener('click', applyScale);
+    const btnReset = document.getElementById('btn-reset-scale');
+    if (btnReset) btnReset.addEventListener('click', resetScale);
+
+    // Wall tool material change → update absorption default
+    const wallMat = document.getElementById('wall-material');
+    if (wallMat) wallMat.addEventListener('change', () => {
+        const mat = matById(parseInt(wallMat.value));
+        const absInput = document.getElementById('wall-absorption');
+        if (absInput) absInput.value = mat.absorption;
+    });
+
+    // AP tool defaults
+    const apModel = document.getElementById('ap-model');
+    if (apModel) apModel.addEventListener('change', () => { apDefaults.model = parseInt(apModel.value); });
+    const apHeight = document.getElementById('ap-height');
+    if (apHeight) apHeight.addEventListener('change', () => { apDefaults.height = parseFloat(apHeight.value); });
+    const ch2g = document.getElementById('ap-ch2g');
+    if (ch2g) ch2g.addEventListener('change', () => { apDefaults.radios['2g'].channel = parseInt(ch2g.value); });
+    const pow2g = document.getElementById('ap-pow2g');
+    if (pow2g) pow2g.addEventListener('change', () => { apDefaults.radios['2g'].power = parseInt(pow2g.value); });
+    const ch5g = document.getElementById('ap-ch5g');
+    if (ch5g) ch5g.addEventListener('change', () => { apDefaults.radios['5g'].channel = parseInt(ch5g.value); });
+    const pow5g = document.getElementById('ap-pow5g');
+    if (pow5g) pow5g.addEventListener('change', () => { apDefaults.radios['5g'].power = parseInt(pow5g.value); });
+    const w5g = document.getElementById('ap-w5g');
+    if (w5g) w5g.addEventListener('change', () => { apDefaults.radios['5g'].width = w5g.value; });
+
+    // Selected wall properties
+    const selWallMat = document.getElementById('sel-wall-mat');
+    if (selWallMat) selWallMat.addEventListener('change', () => {
+        const w = zone().walls[selectedItem.idx];
+        w.material = parseInt(selWallMat.value);
+        w.color = matById(w.material).color;
+        const absI = document.getElementById('sel-wall-abs');
+        if (absI) { absI.value = matById(w.material).absorption; w.absorption = matById(w.material).absorption; }
+        rebuildWalls(); if (heatmapLayer) heatmapLayer._update();
+    });
+    const selWallAbs = document.getElementById('sel-wall-abs');
+    if (selWallAbs) selWallAbs.addEventListener('change', () => {
+        zone().walls[selectedItem.idx].absorption = parseFloat(selWallAbs.value);
+        if (heatmapLayer) heatmapLayer._update();
+    });
+
+    // Selected AP properties
+    const selAlias = document.getElementById('sel-ap-alias');
+    if (selAlias) selAlias.addEventListener('change', () => {
+        zone().aps[selectedItem.idx].alias = selAlias.value;
+        rebuildAPs();
+    });
+    const selModel = document.getElementById('sel-ap-model');
+    if (selModel) selModel.addEventListener('change', () => {
+        zone().aps[selectedItem.idx].model = parseInt(selModel.value);
+        rebuildAPs();
+    });
+    const selHeight = document.getElementById('sel-ap-height');
+    if (selHeight) selHeight.addEventListener('change', () => {
+        zone().aps[selectedItem.idx].height = parseFloat(selHeight.value);
+    });
+    const sc2g = document.getElementById('sel-ch2g');
+    if (sc2g) sc2g.addEventListener('change', () => { zone().aps[selectedItem.idx].radios['2g'].channel = parseInt(sc2g.value); });
+    const sp2g = document.getElementById('sel-pow2g');
+    if (sp2g) sp2g.addEventListener('change', () => {
+        zone().aps[selectedItem.idx].radios['2g'].power = parseInt(sp2g.value);
+        if (heatmapLayer) heatmapLayer._update();
+    });
+    const sc5g = document.getElementById('sel-ch5g');
+    if (sc5g) sc5g.addEventListener('change', () => { zone().aps[selectedItem.idx].radios['5g'].channel = parseInt(sc5g.value); });
+    const sp5g = document.getElementById('sel-pow5g');
+    if (sp5g) sp5g.addEventListener('change', () => {
+        zone().aps[selectedItem.idx].radios['5g'].power = parseInt(sp5g.value);
+        if (heatmapLayer) heatmapLayer._update();
+    });
+    const sw5g = document.getElementById('sel-w5g');
+    if (sw5g) sw5g.addEventListener('change', () => { zone().aps[selectedItem.idx].radios['5g'].width = sw5g.value; });
+
+    // Delete button
+    const btnDel = document.getElementById('btn-del-selected');
+    if (btnDel) btnDel.addEventListener('click', deleteSelected);
+
+    // Item list clicks
+    document.querySelectorAll('.item-row[data-type]').forEach(row => {
+        row.addEventListener('click', (e) => {
+            if (e.target.classList.contains('item-del')) return;
+            selectedItem = { type: row.dataset.type, idx: parseInt(row.dataset.idx) };
+            setMode('select');
+            updateSidebar();
+            updateAPHighlights();
+            // Pan to item
+            if (selectedItem.type === 'ap') {
+                const ap = zone().aps[selectedItem.idx];
+                if (ap) map.setView(toLatLng(ap.px, ap.py), map.getZoom());
+            }
+        });
+    });
+
+    // Item list delete buttons
+    document.querySelectorAll('.item-del[data-del]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const type = btn.dataset.del;
+            const idx = parseInt(btn.dataset.idx);
+            if (type === 'wall') zone().walls.splice(idx, 1);
+            else zone().aps.splice(idx, 1);
+            if (selectedItem && selectedItem.type === type && selectedItem.idx === idx) selectedItem = null;
+            else if (selectedItem && selectedItem.type === type && selectedItem.idx > idx) selectedItem.idx--;
+            rebuildWalls(); rebuildAPs(); updateSidebar();
+            if (heatmapLayer) heatmapLayer._update();
+        });
+    });
+}
+
+// ── Export .netspp ────────────────────────────────────────────────────────
+
+document.getElementById('btn-export').addEventListener('click', exportNetspp);
+
+async function exportNetspp() {
+    const btn = document.getElementById('btn-export');
+    btn.disabled = true;
+    btn.textContent = 'Exporting...';
+
+    try {
+        // Load sql.js dynamically
+        const SQL = await loadSqlJs();
+        const db = new SQL.Database();
+
+        // Create schema
+        db.run(`CREATE TABLE PredictiveData (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT, Description TEXT, Version INTEGER,
+            Author TEXT, OS TEXT, AppVersion TEXT, TimeCreated datetime, TimeModified datetime, ProjectGuid TEXT
+        )`);
+        db.run(`CREATE TABLE Zones (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT, MapId INTEGER, Scale REAL,
+            Description TEXT, PredictiveId INTEGER, ZoneGuid TEXT, MapGuid TEXT
+        )`);
+        db.run(`CREATE TABLE Maps (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, OriginalName TEXT, PngName TEXT, Data BLOB
+        )`);
+        db.run(`CREATE TABLE Snapshots (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, ZoneId INTEGER, Name TEXT, Description TEXT,
+            Merged INTEGER, Time datetime, TimeModified datetime, SnapshotGuid TEXT
+        )`);
+        db.run(`CREATE TABLE Routers (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, SnapId INTEGER, Model INTEGER, Alias TEXT,
+            Description TEXT, Channel INTEGER, Mode TEXT, x REAL, y REAL, IsChecked INTEGER,
+            DirectionType INTEGER, DirectionAngle REAL, WiFiBand INTEGER, BSSID TEXT, SSID TEXT,
+            SecurityMode TEXT, TransmitPower REAL, ChannelWidth TEXT, ChannelCenter INTEGER,
+            Height REAL, VerticalAngle REAL, AntennaId INTEGER
+        )`);
+        db.run(`CREATE TABLE Walls (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, ZoneId INTEGER, Name TEXT, Description TEXT,
+            Material INTEGER, Type INTEGER, OpenDirection INTEGER, StartPointId INTEGER,
+            EndPointId INTEGER, StartWidth REAL, EndWidth REAL, CurveAngle REAL,
+            Absorption REAL, Reflection REAL, Color TEXT
+        )`);
+        db.run(`CREATE TABLE WallsPoints (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, ZoneId INTEGER, X REAL, Y REAL
+        )`);
+        db.run(`CREATE TABLE Antennas (_id INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT, Vendor TEXT, AntennaData TEXT)`);
+        db.run(`CREATE TABLE Aliases (_id INTEGER PRIMARY KEY AUTOINCREMENT, BSSID TEXT, Alias TEXT, SnapId INTEGER)`);
+        db.run(`CREATE TABLE Groups (_id INTEGER PRIMARY KEY AUTOINCREMENT, GroupName TEXT, SnapId INTEGER)`);
+        db.run(`CREATE TABLE GroupsItems (_id INTEGER PRIMARY KEY AUTOINCREMENT, BSSID TEXT, GroupId INTEGER)`);
+        db.run(`CREATE TABLE PathPoints (_id INTEGER PRIMARY KEY AUTOINCREMENT, x REAL, y REAL, ZoneId INTEGER, PathNum INTEGER)`);
+
+        const now = new Date().toISOString().replace('T', ' ').split('.')[0];
+
+        // PredictiveData
+        db.run(`INSERT INTO PredictiveData (Name, Description, Version, Author, OS, AppVersion, TimeCreated, TimeModified, ProjectGuid)
+                VALUES (?, '', 5, 'WiFi Planner Editor', 'Web', '1.0.0', ?, ?, ?)`,
+            [project.name, now, now, crypto.randomUUID()]);
+
+        const zip = new JSZip();
+        let wallPointId = 1;
+
+        for (let zi = 0; zi < project.zones.length; zi++) {
+            const z = project.zones[zi];
+            const mapId = zi + 1;
+            const zoneId = zi + 1;
+            const snapId = zi + 1;
+            const dbScale = z.scale ? z.scale / 100 : 0.1;
+
+            // Map
+            db.run(`INSERT INTO Maps (_id, OriginalName, PngName, Data) VALUES (?, ?, ?, NULL)`,
+                [mapId, z.imageFileName, z.imageFileName]);
+
+            // Zone
+            db.run(`INSERT INTO Zones (_id, Name, MapId, Scale, Description, PredictiveId, ZoneGuid, MapGuid)
+                    VALUES (?, ?, ?, ?, '', 1, ?, ?)`,
+                [zoneId, z.name, mapId, dbScale, crypto.randomUUID(), crypto.randomUUID()]);
+
+            // Snapshot
+            db.run(`INSERT INTO Snapshots (_id, ZoneId, Name, Description, Merged, Time, TimeModified, SnapshotGuid)
+                    VALUES (?, ?, ?, '', 0, ?, ?, ?)`,
+                [snapId, zoneId, '#1 ' + now.split(' ')[0], now, now, crypto.randomUUID()]);
+
+            // Routers (one row per radio band)
+            const coordScale = z.scale || 1;
+            for (const ap of z.aps) {
+                const xM = ap.px / coordScale;
+                const yM = ap.py / coordScale;
+                // 2.4 GHz radio
+                if (ap.radios['2g']) {
+                    const r = ap.radios['2g'];
+                    db.run(`INSERT INTO Routers (SnapId, Model, Alias, Description, Channel, Mode, x, y, IsChecked,
+                            DirectionType, DirectionAngle, WiFiBand, BSSID, SSID, SecurityMode,
+                            TransmitPower, ChannelWidth, ChannelCenter, Height, VerticalAngle, AntennaId)
+                            VALUES (?, ?, ?, '', ?, '', ?, ?, 1, 0, 0, 0, '', '', '', ?, ?, ?, ?, 0, 0)`,
+                        [snapId, ap.model, ap.alias, r.channel, xM, yM, r.power, r.width, r.channel, ap.height]);
+                }
+                // 5 GHz radio
+                if (ap.radios['5g']) {
+                    const r = ap.radios['5g'];
+                    db.run(`INSERT INTO Routers (SnapId, Model, Alias, Description, Channel, Mode, x, y, IsChecked,
+                            DirectionType, DirectionAngle, WiFiBand, BSSID, SSID, SecurityMode,
+                            TransmitPower, ChannelWidth, ChannelCenter, Height, VerticalAngle, AntennaId)
+                            VALUES (?, ?, ?, '', ?, '', ?, ?, 1, 0, 0, 1, '', '', '', ?, ?, ?, ?, 0, 0)`,
+                        [snapId, ap.model, ap.alias, r.channel, xM, yM, r.power, r.width, r.channel, ap.height]);
+                }
+            }
+
+            // Walls + WallsPoints
+            for (const w of z.walls) {
+                const x1m = w.start[0] / coordScale, y1m = w.start[1] / coordScale;
+                const x2m = w.end[0] / coordScale, y2m = w.end[1] / coordScale;
+                const sp = wallPointId++;
+                const ep = wallPointId++;
+                db.run(`INSERT INTO WallsPoints (_id, ZoneId, X, Y) VALUES (?, ?, ?, ?)`, [sp, zoneId, x1m, y1m]);
+                db.run(`INSERT INTO WallsPoints (_id, ZoneId, X, Y) VALUES (?, ?, ?, ?)`, [ep, zoneId, x2m, y2m]);
+                const colorStr = '#FF' + (w.color || '#5C5C5C').replace('#', '');
+                db.run(`INSERT INTO Walls (ZoneId, Name, Description, Material, Type, OpenDirection,
+                        StartPointId, EndPointId, StartWidth, EndWidth, CurveAngle, Absorption, Reflection, Color)
+                        VALUES (?, '', '', ?, 0, 0, ?, ?, 0, 0, 0, ?, 0, ?)`,
+                    [zoneId, w.material, sp, ep, w.absorption, colorStr]);
+            }
+
+            // Add image to ZIP
+            if (z.imageBlob) {
+                zip.file('Maps/' + z.imageFileName, z.imageBlob);
+            }
+        }
+
+        // Export DB and add to ZIP
+        const dbData = db.export();
+        db.close();
+        zip.file('database.db3', dbData);
+
+        // Generate and download
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = project.name.replace(/[^a-zA-Z0-9_-]/g, '_') + '.netspp';
+        a.click();
+        URL.revokeObjectURL(url);
+
+    } catch (err) {
+        console.error('Export failed:', err);
+        document.getElementById('status-hint').textContent = 'Export failed: ' + err.message;
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Export .netspp';
+}
+
+function loadSqlJs() {
+    return new Promise((resolve, reject) => {
+        if (window.initSqlJs) {
+            window.initSqlJs({ locateFile: f => 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/' + f })
+                .then(resolve).catch(reject);
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js';
+        script.onload = () => {
+            window.initSqlJs({ locateFile: f => 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/' + f })
+                .then(resolve).catch(reject);
+        };
+        script.onerror = () => reject(new Error('Failed to load sql.js'));
+        document.head.appendChild(script);
+    });
+}
+
+// ── Initial render ───────────────────────────────────────────────────────
+updateSidebar();
+
+})();
+</script>
+</body>
+</html>
