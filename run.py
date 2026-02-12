@@ -470,6 +470,73 @@ def generate_pdf_report(db_path, zones, output_path, main_ssids, ssid_prefix):
             fig.text(xp + 0.025, 0.043, f'{lb} ({desc})', fontsize=8, color='#333')
         pdf.savefig(fig, dpi=150); plt.close(fig)
 
+        # ── PAGE 2: Worst Spots ──────────────────────────────────────────
+        # Build per-point data: id, zone, time, per-ssid rssi, best, rating
+        cur.execute("""
+            SELECT sp._id, z.Name, sp.Time FROM ScanPoints sp
+            JOIN Snapshots s ON s._id = sp.SnapId
+            JOIN Zones z ON z._id = s.ZoneId
+            ORDER BY sp._id
+        """)
+        all_sp_info = cur.fetchall()
+        worst_rows = []
+        for sp_id, zname, tm in all_sp_info:
+            bv = -100
+            ssid_vals = {}
+            for ssid in main_ssids[:4]:
+                cur.execute("SELECT MAX(RSSI) FROM WlanNetworks WHERE ScanPointId=? AND SSID=?",
+                             (sp_id, ssid))
+                v = cur.fetchone()[0]
+                ssid_vals[ssid] = v
+                if v:
+                    bv = max(bv, v)
+            worst_rows.append((bv, sp_id, zname, tm, ssid_vals))
+
+        worst_rows.sort(key=lambda r: r[0])
+        n_worst = min(25, len(worst_rows))
+        worst_top = worst_rows[:n_worst]
+
+        ws_hdr = ['#', 'Pt', 'Zone', 'Time'] + \
+                 [s.replace(ssid_prefix, '') for s in main_ssids[:4]] + ['Best', 'Rating']
+
+        ws_data = []
+        for rank, (bv, sp_id, zname, tm, ssid_vals) in enumerate(worst_top, 1):
+            row = [str(rank), str(sp_id), zname[:10], tm[11:19]]
+            for ssid in main_ssids[:4]:
+                v = ssid_vals[ssid]
+                row.append(f'{v:.1f}' if v else '-')
+            row.append(f'{bv:.1f}')
+            if bv >= -65: row.append('Excellent')
+            elif bv >= -75: row.append('Good')
+            elif bv >= -80: row.append('Fair')
+            else: row.append('Weak')
+            ws_data.append(row)
+
+        fig = plt.figure(figsize=(11.69, 8.27)); fig.patch.set_facecolor('white')
+        fig.suptitle(f'Worst Coverage Spots (Top {n_worst})', fontsize=16, fontweight='bold', y=0.97)
+        fig.text(0.5, 0.935, 'Scan points ranked by weakest best signal across all SSIDs',
+                 ha='center', fontsize=10, color='#666')
+        ax = fig.add_subplot(111); ax.axis('off')
+
+        cell_colors = []
+        for r in ws_data:
+            rc = ['white'] * len(r)
+            if r[-1] == 'Excellent': rc[-1] = rc[-2] = '#c8e6c9'
+            elif r[-1] == 'Good': rc[-1] = rc[-2] = '#fff9c4'
+            elif r[-1] == 'Fair': rc[-1] = rc[-2] = '#ffe0b2'
+            else: rc[-1] = rc[-2] = '#ffcdd2'
+            cell_colors.append(rc)
+
+        tb = ax.table(cellText=ws_data, colLabels=ws_hdr, loc='center',
+                       cellLoc='center', cellColours=cell_colors)
+        tb.auto_set_font_size(False); tb.set_fontsize(10)
+        tb.scale(1, 1.5)
+        for j in range(len(ws_hdr)):
+            tb[0, j].set_facecolor('#1a1a2e')
+            tb[0, j].set_text_props(color='white', fontweight='bold')
+        fig.tight_layout(rect=[0.02, 0.02, 0.98, 0.92])
+        pdf.savefig(fig, dpi=150); plt.close(fig)
+
         # ── Per-zone pages ───────────────────────────────────────────────
         for z in zones:
             coord_factor = z['scale'] * 100
