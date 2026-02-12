@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WiFi Survey</title>
+<link rel="stylesheet" href="leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; height: 100vh; background: #1a1a2e; color: #e0e0e0; }
+
+/* Sidebar */
+#sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: #16213e;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    border-right: 1px solid #0f3460;
+    z-index: 1000;
+}
+#sidebar h1 { font-size: 16px; color: #e94560; margin-bottom: 2px; }
+#sidebar h2 { font-size: 12px; font-weight: 400; color: #8899aa; margin-bottom: 4px; }
+.control-group { background: #1a1a2e; border-radius: 8px; padding: 12px; }
+.control-group label { display: block; font-size: 12px; font-weight: 600; color: #aabbcc; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.control-group select, .control-group input { width: 100%; padding: 6px 8px; border-radius: 4px; border: 1px solid #0f3460; background: #16213e; color: #e0e0e0; font-size: 13px; }
+.control-group select:focus { outline: none; border-color: #e94560; }
+
+/* Toggle switches */
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
+.toggle-row span { font-size: 13px; }
+.toggle { position: relative; width: 40px; height: 22px; cursor: pointer; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle .slider { position: absolute; inset: 0; background: #333; border-radius: 22px; transition: 0.2s; }
+.toggle .slider::before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; bottom: 3px; background: #888; border-radius: 50%; transition: 0.2s; }
+.toggle input:checked + .slider { background: #e94560; }
+.toggle input:checked + .slider::before { transform: translateX(18px); background: #fff; }
+
+/* Legend */
+.legend { display: flex; flex-direction: column; gap: 3px; }
+.legend-bar { height: 16px; border-radius: 3px; }
+.legend-bar.signal { background: linear-gradient(to right, #d32f2f, #f57c00, #fbc02d, #4caf50, #1b5e20); }
+.legend-bar.cci { background: linear-gradient(to right, #1b5e20, #4caf50, #fbc02d, #f57c00, #d32f2f); }
+.legend-labels { display: flex; justify-content: space-between; font-size: 10px; color: #8899aa; }
+
+/* Stats */
+#stats { font-size: 11px; color: #8899aa; line-height: 1.6; }
+#stats b { color: #aabbcc; }
+
+/* Map */
+#map { flex: 1; background: #111; }
+
+/* Leaflet popup overrides */
+.leaflet-popup-content-wrapper { background: #16213e; color: #e0e0e0; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+.leaflet-popup-tip { background: #16213e; }
+.leaflet-popup-content { margin: 10px 14px; font-size: 12px; line-height: 1.6; }
+.popup-title { font-weight: 700; font-size: 13px; color: #e94560; margin-bottom: 4px; }
+.popup-signal { display: flex; justify-content: space-between; padding: 1px 0; }
+.popup-signal .ssid { color: #aabbcc; }
+.popup-signal .rssi { font-weight: 600; font-family: 'Consolas', monospace; }
+.signal-excellent { color: #4caf50; }
+.signal-good { color: #8bc34a; }
+.signal-fair { color: #fbc02d; }
+.signal-weak { color: #f57c00; }
+.signal-poor { color: #d32f2f; }
+.cci-none { color: #4caf50; }
+.cci-low { color: #8bc34a; }
+.cci-moderate { color: #fbc02d; }
+.cci-high { color: #f57c00; }
+.cci-severe { color: #d32f2f; }
+.popup-divider { border: none; border-top: 1px solid #0f3460; margin: 4px 0; }
+.popup-detail { color: #8899aa; font-size: 11px; }
+.popup-section-title { font-weight: 600; font-size: 12px; color: #e94560; margin: 2px 0; }
+.popup-networks { max-height: 200px; overflow-y: auto; }
+.popup-net-row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; font-size: 11px; }
+.popup-net-row .bssid { color: #667788; font-family: 'Consolas', monospace; font-size: 10px; }
+.popup-cci-ch { padding: 3px 0; }
+.popup-cci-ch .ch-header { font-weight: 600; font-size: 11px; }
+.popup-cci-ap { font-size: 10px; color: #8899aa; font-family: 'Consolas', monospace; padding-left: 8px; }
+
+/* Loading overlay */
+#loading { position: fixed; inset: 0; background: #1a1a2e; display: flex; align-items: center; justify-content: center; z-index: 9999; font-size: 18px; color: #e94560; }
+
+/* View-dependent legend visibility */
+#legend-signal, #legend-cci { display: none; }
+#legend-signal.active, #legend-cci.active { display: flex; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div>
+        <h1>WiFi Survey</h1>
+        <h2 id="survey-name">Loading...</h2>
+    </div>
+
+    <div class="control-group" id="zone-group" style="display:none">
+        <label>Zone</label>
+        <select id="zone-select"></select>
+    </div>
+
+    <div class="control-group">
+        <label>View Mode</label>
+        <select id="view-mode">
+            <option value="signal">Signal Strength</option>
+            <option value="cci">Co-Channel Interference</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>SSID</label>
+        <select id="ssid-select">
+            <option value="__ALL__">All Networks</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>Band</label>
+        <select id="band-select">
+            <option value="any">Any Band</option>
+            <option value="2g">2.4 GHz</option>
+            <option value="5g">5 GHz</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>Layers</label>
+        <div class="toggle-row">
+            <span>Heatmap</span>
+            <label class="toggle"><input type="checkbox" id="toggle-heatmap" checked><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+            <span>Scan Points</span>
+            <label class="toggle"><input type="checkbox" id="toggle-points" checked><span class="slider"></span></label>
+        </div>
+    </div>
+
+    <div class="control-group">
+        <label>Heatmap Opacity</label>
+        <input type="range" id="heatmap-opacity" min="0" max="100" value="55">
+    </div>
+
+    <div class="control-group" id="legend-signal">
+        <label>Signal Strength (dBm)</label>
+        <div class="legend">
+            <div class="legend-bar signal"></div>
+            <div class="legend-labels">
+                <span>-90</span><span>-80</span><span>-70</span><span>-60</span><span>-50</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="control-group" id="legend-cci">
+        <label>Co-Channel Interference</label>
+        <div class="legend">
+            <div class="legend-bar cci"></div>
+            <div class="legend-labels">
+                <span>None</span><span>1 AP</span><span>2 APs</span><span>3 APs</span><span>4+ APs</span>
+            </div>
+        </div>
+        <div style="font-size: 11px; line-height: 1.8; margin-top: 8px;">
+            <span><span class="cci-none">&#9679;</span> None: no competing APs</span><br>
+            <span><span class="cci-low">&#9679;</span> Low: 1 competing AP</span><br>
+            <span><span class="cci-moderate">&#9679;</span> Moderate: 2 competing</span><br>
+            <span><span class="cci-high">&#9679;</span> High: 3 competing</span><br>
+            <span><span class="cci-severe">&#9679;</span> Severe: 4+ competing</span>
+        </div>
+    </div>
+
+    <div id="stats"></div>
+</div>
+
+<div id="map"></div>
+<div id="loading">Loading survey data...</div>
+
+<script src="leaflet.js"></script>
+<script src="data.js"></script>
+<script>
+(function() {
+
+document.getElementById('loading').style.display = 'none';
+
+// --- Current zone state ---
+let currentZoneIdx = 0;
+let currentZone = DATA.zones[0];
+let IMG_W = currentZone.image.width;
+let IMG_H = currentZone.image.height;
+let imageOverlay = null;
+
+// --- Populate sidebar ---
+document.getElementById('survey-name').textContent = DATA.survey.name;
+document.title = 'WiFi Survey - ' + DATA.survey.name;
+const SSID_PREFIX = DATA.ssid_prefix || '';
+
+// Zone selector (show only if multiple zones)
+const zoneSelect = document.getElementById('zone-select');
+if (DATA.zones.length > 1) {
+    document.getElementById('zone-group').style.display = '';
+    DATA.zones.forEach((z, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = z.name + ' (' + z.scan_points.length + ' pts)';
+        zoneSelect.appendChild(opt);
+    });
+}
+
+const ssidSelect = document.getElementById('ssid-select');
+const allOption = ssidSelect.querySelector('option[value="__ALL__"]');
+if (SSID_PREFIX) allOption.textContent = 'All ' + SSID_PREFIX + '* Networks';
+
+DATA.main_ssids.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = SSID_PREFIX ? s.replace(SSID_PREFIX, '') : s;
+    ssidSelect.appendChild(opt);
+});
+const otherSSIDs = DATA.all_ssids.filter(s => !DATA.main_ssids.includes(s));
+if (otherSSIDs.length) {
+    const sep = document.createElement('option');
+    sep.disabled = true;
+    sep.textContent = '── Other Networks ──';
+    ssidSelect.appendChild(sep);
+    otherSSIDs.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        ssidSelect.appendChild(opt);
+    });
+}
+
+function updateStats() {
+    const totalPts = DATA.zones.reduce((s, z) => s + z.scan_points.length, 0);
+    let html = '';
+    if (DATA.zones.length > 1) {
+        html += `<b>Zone:</b> ${currentZone.name}<br>`;
+        html += `<b>Zone Points:</b> ${currentZone.scan_points.length}<br>`;
+        html += `<b>Total Points:</b> ${totalPts}<br>`;
+    } else {
+        html += `<b>Scan Points:</b> ${totalPts}<br>`;
+    }
+    html += `<b>SSIDs Found:</b> ${DATA.all_ssids.length}<br>`;
+    html += `<b>Survey Date:</b> ${DATA.survey.created.split(' ')[0]}<br>`;
+    html += `<b>Image:</b> ${IMG_W} x ${IMG_H} px`;
+    document.getElementById('stats').innerHTML = html;
+}
+updateStats();
+
+// --- Initialize Leaflet map ---
+const map = L.map('map', {
+    crs: L.CRS.Simple,
+    minZoom: -2,
+    maxZoom: 4,
+    zoomSnap: 0.25,
+    zoomDelta: 0.5,
+    attributionControl: false,
+});
+
+function setMapZone() {
+    // Remove old overlay
+    if (imageOverlay) {
+        map.removeLayer(imageOverlay);
+    }
+    const bounds = [[0, 0], [IMG_H, IMG_W]];
+    imageOverlay = L.imageOverlay(currentZone.map_file, bounds).addTo(map);
+    map.fitBounds(bounds);
+}
+setMapZone();
+
+// --- Zone switching ---
+function switchZone(idx) {
+    currentZoneIdx = idx;
+    currentZone = DATA.zones[idx];
+    IMG_W = currentZone.image.width;
+    IMG_H = currentZone.image.height;
+    setMapZone();
+    updateStats();
+    refresh();
+}
+
+// --- Convex hull utility (Graham scan) ---
+function convexHull(pts) {
+    if (pts.length < 3) return pts.slice();
+    const cross = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+    const sorted = pts.slice().sort((a,b) => a[0]-b[0] || a[1]-b[1]);
+    const lower = [];
+    for (const p of sorted) { while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop(); lower.push(p); }
+    const upper = [];
+    for (const p of sorted.reverse()) { while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop(); upper.push(p); }
+    lower.pop(); upper.pop();
+    return lower.concat(upper);
+}
+
+// --- IDW color gradient (NetSpot-like) ---
+function rssiToRGB(rssi) {
+    const t = Math.max(0, Math.min(1, (rssi + 90) / 40));
+    let r, g, b;
+    if (t < 0.2) {
+        const s = t / 0.2;
+        r = 200 + 45*s; g = 30 + 70*s; b = 30 - 20*s;
+    } else if (t < 0.4) {
+        const s = (t - 0.2) / 0.2;
+        r = 245; g = 100 + 100*s; b = 10 + 20*s;
+    } else if (t < 0.6) {
+        const s = (t - 0.4) / 0.2;
+        r = 245 - 20*s; g = 200 + 30*s; b = 30 + 10*s;
+    } else if (t < 0.8) {
+        const s = (t - 0.6) / 0.2;
+        r = 225 - 110*s; g = 230 - 10*s; b = 40 - 10*s;
+    } else {
+        const s = (t - 0.8) / 0.2;
+        r = 115 - 80*s; g = 220 - 30*s; b = 30 + 10*s;
+    }
+    return [Math.round(Math.max(0,Math.min(255,r))), Math.round(Math.max(0,Math.min(255,g))), Math.round(Math.max(0,Math.min(255,b)))];
+}
+
+function cciToRGB(cci) {
+    if (cci === 0) return [27, 94, 32];
+    if (cci === 1) return [139, 195, 74];
+    if (cci === 2) return [251, 192, 45];
+    if (cci === 3) return [245, 124, 0];
+    return [211, 47, 47];
+}
+
+// --- Heatmap canvas layer (IDW interpolation) ---
+const HeatmapLayer = L.Layer.extend({
+    onAdd(map) {
+        this._map = map;
+        this._canvas = L.DomUtil.create('canvas', 'leaflet-heatmap-layer');
+        this._canvas.style.position = 'absolute';
+        this._canvas.style.pointerEvents = 'none';
+        map.getPanes().overlayPane.appendChild(this._canvas);
+        map.on('moveend zoomend resize', this._update, this);
+        this._update();
+    },
+    onRemove(map) {
+        L.DomUtil.remove(this._canvas);
+        map.off('moveend zoomend resize', this._update, this);
+    },
+    _update() {
+        if (!this._map) return;
+        const size = this._map.getSize();
+        this._canvas.width = size.x;
+        this._canvas.height = size.y;
+        const topLeft = this._map.containerPointToLayerPoint([0, 0]);
+        L.DomUtil.setPosition(this._canvas, topLeft);
+        this.draw();
+    },
+    draw() {
+        const ctx = this._canvas.getContext('2d');
+        const W = this._canvas.width;
+        const H = this._canvas.height;
+        ctx.clearRect(0, 0, W, H);
+
+        const points = getFilteredPoints();
+        const validPts = points.filter(p => p.rssi !== null || p.cci !== null);
+        if (validPts.length < 3) return;
+
+        const viewMode = document.getElementById('view-mode').value;
+        const opacity = document.getElementById('heatmap-opacity').value / 100;
+
+        const screenPts = validPts.map(p => {
+            const sp = this._map.latLngToContainerPoint([p.y, p.x]);
+            const val = viewMode === 'cci' ? (p.cci ?? 0) : p.rssi;
+            return { sx: sp.x, sy: sp.y, val };
+        }).filter(p => p.val !== null);
+
+        if (screenPts.length < 3) return;
+
+        const hullInput = screenPts.map(p => [p.sx, p.sy]);
+        const hull = convexHull(hullInput);
+
+        const scanRadiusM = currentZone.coord_scale ? 2.5 * currentZone.coord_scale : 60;
+        const p1 = this._map.latLngToContainerPoint([0, 0]);
+        const p2 = this._map.latLngToContainerPoint([scanRadiusM, 0]);
+        const padPx = Math.abs(p2.y - p1.y);
+
+        const expandedHull = expandPolygon(hull, padPx);
+
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (const [hx, hy] of expandedHull) {
+            minX = Math.min(minX, hx); maxX = Math.max(maxX, hx);
+            minY = Math.min(minY, hy); maxY = Math.max(maxY, hy);
+        }
+        minX = Math.max(0, Math.floor(minX));
+        maxX = Math.min(W, Math.ceil(maxX));
+        minY = Math.max(0, Math.floor(minY));
+        maxY = Math.min(H, Math.ceil(maxY));
+
+        if (maxX <= minX || maxY <= minY) return;
+
+        const zoom = this._map.getZoom();
+        const step = zoom >= 1 ? 2 : zoom >= 0 ? 3 : zoom >= -1 ? 5 : 8;
+
+        const imgData = ctx.createImageData(W, H);
+        const data = imgData.data;
+        const power = 3;
+
+        for (let py = minY; py < maxY; py += step) {
+            for (let px = minX; px < maxX; px += step) {
+                if (!pointInPolygon(px, py, expandedHull)) continue;
+
+                let wSum = 0, vSum = 0;
+                for (const sp of screenPts) {
+                    const dx = px - sp.sx;
+                    const dy = py - sp.sy;
+                    const d2 = dx*dx + dy*dy;
+                    if (d2 < 1) { wSum = 1; vSum = sp.val; break; }
+                    const w = 1 / Math.pow(d2, power / 2);
+                    wSum += w;
+                    vSum += w * sp.val;
+                }
+                const val = vSum / wSum;
+
+                let r, g, b;
+                if (viewMode === 'cci') {
+                    [r, g, b] = cciToRGB(Math.round(val));
+                } else {
+                    [r, g, b] = rssiToRGB(val);
+                }
+
+                const alpha = Math.round(opacity * 220);
+                for (let dy = 0; dy < step && py+dy < maxY; dy++) {
+                    for (let dx = 0; dx < step && px+dx < maxX; dx++) {
+                        const idx = ((py+dy) * W + (px+dx)) * 4;
+                        data[idx] = r;
+                        data[idx+1] = g;
+                        data[idx+2] = b;
+                        data[idx+3] = alpha;
+                    }
+                }
+            }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+    },
+});
+
+function expandPolygon(hull, pad) {
+    const cx = hull.reduce((s,p) => s+p[0], 0) / hull.length;
+    const cy = hull.reduce((s,p) => s+p[1], 0) / hull.length;
+    return hull.map(([x,y]) => {
+        const dx = x - cx, dy = y - cy;
+        const d = Math.sqrt(dx*dx + dy*dy) || 1;
+        return [x + dx/d * pad, y + dy/d * pad];
+    });
+}
+
+function pointInPolygon(x, y, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi,yi] = poly[i], [xj,yj] = poly[j];
+        if ((yi > y) !== (yj > y) && x < (xj-xi)*(y-yi)/(yj-yi)+xi) inside = !inside;
+    }
+    return inside;
+}
+
+const heatmapLayer = new HeatmapLayer();
+heatmapLayer.addTo(map);
+
+// --- Scan point markers ---
+const pointMarkers = L.layerGroup().addTo(map);
+
+function createPointMarkers() {
+    pointMarkers.clearLayers();
+    const points = getFilteredPoints();
+    const viewMode = document.getElementById('view-mode').value;
+
+    points.forEach(p => {
+        const sp = currentZone.scan_points.find(s => s.id === p.id);
+        let color;
+        if (viewMode === 'cci') {
+            color = p.cci !== null ? cciToColor(p.cci) : '#555';
+        } else {
+            color = p.rssi !== null ? rssiToColor(p.rssi) : '#555';
+        }
+
+        const marker = L.circleMarker([p.y, p.x], {
+            radius: 6,
+            fillColor: color,
+            fillOpacity: 0.9,
+            color: '#fff',
+            weight: 1.5,
+            opacity: 0.7,
+        });
+
+        // Build popup content
+        let html = `<div class="popup-title">Scan Point #${sp.id}</div>`;
+        html += `<div class="popup-detail">${sp.time}</div>`;
+        html += `<hr class="popup-divider">`;
+
+        // --- Signal section ---
+        const band = document.getElementById('band-select').value;
+        const signalMap = band === '2g' ? sp.signals_2g : band === '5g' ? sp.signals_5g : sp.signals_any;
+
+        DATA.main_ssids.forEach(ssid => {
+            const rssi = signalMap[ssid];
+            if (rssi !== undefined) {
+                html += `<div class="popup-signal"><span class="ssid">${SSID_PREFIX ? ssid.replace(SSID_PREFIX,'') : ssid}</span>`;
+                html += `<span class="rssi ${rssiClass(rssi)}">${Math.round(rssi)} dBm</span></div>`;
+            }
+        });
+
+        // --- Interference section ---
+        const cci = sp.interference;
+        if (cci) {
+            const bandData = band === '2g' ? cci.band_2g : band === '5g' ? cci.band_5g : null;
+            const maxCCI = bandData ? bandData.max_cci : cci.max_cci;
+            const worstSIR = bandData ? bandData.worst_sir : cci.worst_sir;
+            const groups = bandData ? (bandData.overlap_groups || []) :
+                [...(cci.band_2g.overlap_groups || []), ...(cci.band_5g.overlap_groups || [])];
+
+            html += `<hr class="popup-divider">`;
+            html += `<div class="popup-section-title">Co-Channel Interference</div>`;
+
+            if (maxCCI === 0) {
+                html += `<div class="popup-detail"><span class="cci-none">&#9679;</span> No co-channel interference</div>`;
+            } else {
+                html += `<div class="popup-signal"><span class="ssid">Max competing APs</span>`;
+                html += `<span class="rssi ${cciClass(maxCCI)}">${maxCCI}</span></div>`;
+                if (worstSIR !== null) {
+                    html += `<div class="popup-signal"><span class="ssid">Worst SIR</span>`;
+                    html += `<span class="rssi ${worstSIR > 10 ? 'cci-none' : worstSIR > 5 ? 'cci-moderate' : 'cci-severe'}">${worstSIR} dB</span></div>`;
+                }
+
+                const seen = new Set();
+                const uniqueGroups = groups.filter(g => {
+                    const key = g.ap.mac;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                }).sort((a, b) => b.competing - a.competing);
+
+                if (uniqueGroups.length) {
+                    html += `<div class="popup-networks" style="margin-top:4px">`;
+                    uniqueGroups.forEach(g => {
+                        const ap = g.ap;
+                        const widthLabel = ap.width.replace('MHZ_', '') + ' MHz';
+                        html += `<div class="popup-cci-ch">`;
+                        html += `<div class="ch-header">AP *:${ap.mac} Ch ${ap.ch} (${widthLabel}, ${ap.freq_lo}-${ap.freq_hi} MHz)`;
+                        html += ` <span class="rssi">${ap.rssi} dBm</span></div>`;
+                        html += `<div style="padding-left:8px;font-size:11px">`;
+                        html += `<span class="${cciClass(g.competing)}">${g.competing} interferer${g.competing > 1 ? 's' : ''}</span>`;
+                        html += ` SIR: <span class="${g.sir > 10 ? 'cci-none' : g.sir > 5 ? 'cci-moderate' : 'cci-severe'}">${g.sir} dB</span>`;
+                        html += `</div>`;
+                        g.interferers.forEach(intf => {
+                            const iWidth = intf.width.replace('MHZ_', '') + ' MHz';
+                            html += `<div class="popup-cci-ap">*:${intf.mac} Ch ${intf.ch} (${iWidth}) ${intf.rssi} dBm</div>`;
+                        });
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+            }
+        }
+
+        // --- Other networks ---
+        const otherSignals = Object.entries(signalMap).filter(([k]) => !DATA.main_ssids.includes(k));
+        if (otherSignals.length) {
+            html += `<hr class="popup-divider">`;
+            html += `<div class="popup-detail" style="margin-bottom:2px">Other networks (${otherSignals.length})</div>`;
+            html += `<div class="popup-networks">`;
+            otherSignals.sort((a, b) => b[1] - a[1]).forEach(([ssid, rssi]) => {
+                html += `<div class="popup-net-row"><span>${ssid}</span>`;
+                html += `<span class="rssi ${rssiClass(rssi)}">${Math.round(rssi)}</span></div>`;
+            });
+            html += `</div>`;
+        }
+
+        // --- BSSIDs for selected SSID ---
+        const selectedSSID = ssidSelect.value;
+        if (selectedSSID !== '__ALL__') {
+            const bssids = sp.networks.filter(n => n.ssid === selectedSSID);
+            if (bssids.length) {
+                html += `<hr class="popup-divider">`;
+                html += `<div class="popup-detail" style="margin-bottom:2px">APs for ${selectedSSID} (${bssids.length})</div>`;
+                html += `<div class="popup-networks">`;
+                bssids.sort((a, b) => b.rssi - a.rssi).forEach(n => {
+                    html += `<div class="popup-net-row">`;
+                    html += `<span class="bssid">${n.bssid}</span>`;
+                    html += `<span class="rssi ${rssiClass(n.rssi)}">${Math.round(n.rssi)} ${n.band} ch${n.channel}</span>`;
+                    html += `</div>`;
+                });
+                html += `</div>`;
+            }
+        }
+
+        marker.bindPopup(html, { maxWidth: 350, maxHeight: 450 });
+
+        // Tooltip
+        let tooltipText;
+        if (viewMode === 'cci') {
+            tooltipText = `#${sp.id}: ${p.cci} competing APs`;
+        } else {
+            tooltipText = `#${sp.id}: ${p.rssi !== null ? Math.round(p.rssi) + ' dBm' : 'N/A'}`;
+        }
+        marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -8] });
+        pointMarkers.addLayer(marker);
+    });
+}
+
+// --- Signal helpers ---
+function getFilteredPoints() {
+    const ssid = ssidSelect.value;
+    const band = document.getElementById('band-select').value;
+
+    return currentZone.scan_points.map(sp => {
+        let rssi = null;
+        const signalMap = band === '2g' ? sp.signals_2g : band === '5g' ? sp.signals_5g : sp.signals_any;
+
+        if (ssid === '__ALL__') {
+            const vals = DATA.main_ssids.map(s => signalMap[s]).filter(v => v !== undefined);
+            rssi = vals.length ? Math.max(...vals) : null;
+        } else {
+            rssi = signalMap[ssid] !== undefined ? signalMap[ssid] : null;
+        }
+
+        let cci = 0;
+        if (sp.interference) {
+            if (band === '2g') cci = sp.interference.band_2g.max_cci;
+            else if (band === '5g') cci = sp.interference.band_5g.max_cci;
+            else cci = sp.interference.max_cci;
+        }
+
+        return { id: sp.id, x: sp.x, y: IMG_H - sp.y, rssi, cci };
+    });
+}
+
+function rssiToColor(rssi) {
+    const [r, g, b] = rssiToRGB(rssi);
+    return '#' + [r,g,b].map(c => c.toString(16).padStart(2,'0')).join('');
+}
+
+function rssiClass(rssi) {
+    if (rssi >= -50) return 'signal-excellent';
+    if (rssi >= -60) return 'signal-good';
+    if (rssi >= -70) return 'signal-fair';
+    if (rssi >= -80) return 'signal-weak';
+    return 'signal-poor';
+}
+
+function cciToColor(cci) {
+    if (cci === 0) return '#1b5e20';
+    if (cci === 1) return '#8bc34a';
+    if (cci === 2) return '#fbc02d';
+    if (cci === 3) return '#f57c00';
+    return '#d32f2f';
+}
+
+function cciClass(cci) {
+    if (cci === 0) return 'cci-none';
+    if (cci === 1) return 'cci-low';
+    if (cci === 2) return 'cci-moderate';
+    if (cci === 3) return 'cci-high';
+    return 'cci-severe';
+}
+
+// --- Legend visibility ---
+function updateLegend() {
+    const mode = document.getElementById('view-mode').value;
+    document.getElementById('legend-signal').classList.toggle('active', mode === 'signal');
+    document.getElementById('legend-cci').classList.toggle('active', mode === 'cci');
+}
+
+// --- Event handlers ---
+function refresh() {
+    updateLegend();
+    createPointMarkers();
+    heatmapLayer._update();
+}
+
+document.getElementById('view-mode').addEventListener('change', refresh);
+ssidSelect.addEventListener('change', refresh);
+document.getElementById('band-select').addEventListener('change', refresh);
+document.getElementById('heatmap-opacity').addEventListener('input', () => heatmapLayer._update());
+
+zoneSelect.addEventListener('change', function() {
+    switchZone(parseInt(this.value));
+});
+
+document.getElementById('toggle-heatmap').addEventListener('change', function() {
+    if (this.checked) heatmapLayer.addTo(map);
+    else map.removeLayer(heatmapLayer);
+});
+
+document.getElementById('toggle-points').addEventListener('change', function() {
+    if (this.checked) pointMarkers.addTo(map);
+    else map.removeLayer(pointMarkers);
+});
+
+// Initial render
+updateLegend();
+createPointMarkers();
+
+})();
+</script>
+</body>
+</html>

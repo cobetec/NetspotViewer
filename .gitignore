@@ -1,0 +1,50 @@
+# Survey data files
+*.netspu
+*.db3
+
+# Generated output
+output/
+output_*/
+extracted/
+extracted_*/
+
+# NetSpot application
+NetSpot/
+
+# Generated/temporary files
+website/data.js
+website/data.json
+website/Zone.png
+website/*.png
+website/nul
+nul
+
+# Old/development scripts
+generate_report.py
+generate_report_v2.py
+analyze_interference.py
+check_channels.py
+check_coords.py
+website/extract_data.py
+website/compare.html
+
+# Temp images and reports
+*.png
+*.pdf
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE/tools
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Survey folders
+Waregem Textielstraat 13/
