@@ -964,12 +964,13 @@ const HeatmapLayer = L.Layer.extend({
                 for (const ap of screenAPs) {
                     const dx = mapX - ap.px, dy = mapY - ap.py;
                     const distM = Math.max(1, Math.sqrt(dx*dx + dy*dy) / coordScale);
-                    const fspl = 20 * Math.log10(distM) + ap.freqLoss;
+                    // Indoor path loss: use exponent 2.8 (typical office) instead of free-space 2.0
+                    const fspl = 28 * Math.log10(distM) + ap.freqLoss;
                     let wl = 0;
                     for (const w of walls) {
                         if (segmentsIntersect(ap.px, ap.py, mapX, mapY, w.x1, w.y1, w.x2, w.y2)) wl += w.absorption;
                     }
-                    const sig = ap.power + 5 - fspl - wl;
+                    const sig = ap.power + 3 - fspl - wl;
                     if (sig > best) best = sig;
                 }
                 const [r, g, b] = rssiToRGB(best);
@@ -1894,6 +1895,10 @@ function loadFromPreload(data) {
 }
 
 // ── Initial render ───────────────────────────────────────────────────────
+
+// Expose API for testing and preload integration
+window._editor = { project, setupMapForZone, renderZoneTabs, setMode, setHint,
+    enableHeatmap, disableHeatmap, checkAutoHeatmap, rebuildWalls, rebuildAPs, updateSidebar };
 
 updateSidebar();
 tryLoadPreload();
