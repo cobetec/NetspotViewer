@@ -16,8 +16,10 @@ import argparse
 import http.server
 import json
 import os
+import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 import webbrowser
@@ -262,6 +264,140 @@ def generate_preload_js(db_path, zones, extract_dir, output_path):
     return data
 
 
+# ── WiFi Scanning ────────────────────────────────────────────────────────────
+
+def signal_pct_to_dbm(pct):
+    """Convert Windows signal quality percentage to approximate dBm."""
+    # Windows formula: quality = 2 * (dBm + 100) for dBm >= -100
+    # So: dBm = (quality / 2) - 100
+    return max(-100, min(-30, (pct / 2) - 100))
+
+
+def scan_wifi_networks():
+    """Scan WiFi networks using OS-specific commands. Returns list of network dicts."""
+    if sys.platform == 'win32':
+        return _scan_windows()
+    elif sys.platform == 'darwin':
+        return _scan_macos()
+    else:
+        return _scan_linux()
+
+
+def _scan_windows():
+    """Scan WiFi on Windows using netsh."""
+    result = subprocess.run(
+        ['netsh', 'wlan', 'show', 'networks', 'mode=bssid'],
+        capture_output=True, text=True, timeout=10
+    )
+    networks = []
+    current_ssid = None
+    current_auth = ''
+    current_bssid = None
+    current = {}
+
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if line.startswith('SSID ') and ':' in line and 'BSSID' not in line:
+            current_ssid = line.split(':', 1)[1].strip()
+            current_auth = ''
+        elif line.startswith('Authentication'):
+            current_auth = line.split(':', 1)[1].strip()
+            if current_bssid:
+                current['security'] = current_auth
+        elif line.startswith('BSSID'):
+            # Save previous BSSID entry if exists
+            if current_bssid and current.get('rssi') is not None:
+                networks.append(dict(current))
+            current_bssid = line.split(':', 1)[1].strip()
+            current = {'ssid': current_ssid or '', 'bssid': current_bssid, 'security': current_auth}
+        elif line.startswith('Signal') and current_bssid:
+            pct = int(re.search(r'(\d+)', line).group(1))
+            current['rssi'] = signal_pct_to_dbm(pct)
+        elif line.startswith('Channel') and not line.startswith('Channel Util') and current_bssid:
+            ch = re.search(r'(\d+)', line)
+            if ch:
+                current['channel'] = int(ch.group(1))
+        elif line.startswith('Band') and current_bssid:
+            band_str = line.split(':', 1)[1].strip()
+            current['band'] = band_str if 'GHz' in band_str else ('5 GHz' if '5' in band_str else '2.4 GHz')
+        elif line.startswith('Radio type') and current_bssid:
+            current['phy'] = line.split(':', 1)[1].strip()
+
+    # Don't forget the last entry
+    if current_bssid and current.get('rssi') is not None:
+        networks.append(dict(current))
+
+    # Add defaults for missing fields
+    for n in networks:
+        n.setdefault('channel', 0)
+        n.setdefault('band', '2.4 GHz')
+        n.setdefault('noise', -95)
+        n.setdefault('width', 'MHZ_20')
+        n.setdefault('security', '')
+        n.setdefault('phy', '')
+        n['center'] = n['channel']
+
+    return networks
+
+
+def _scan_macos():
+    """Scan WiFi on macOS using airport."""
+    result = subprocess.run(
+        ['/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport', '-s'],
+        capture_output=True, text=True, timeout=10
+    )
+    networks = []
+    for line in result.stdout.splitlines()[1:]:  # Skip header
+        parts = line.split()
+        if len(parts) < 7:
+            continue
+        try:
+            rssi = int(parts[-7])
+            channel = int(parts[-6])
+            networks.append({
+                'ssid': ' '.join(parts[:-7]).strip(),
+                'bssid': parts[-8] if len(parts) > 7 else '',
+                'rssi': rssi, 'noise': -95,
+                'channel': channel, 'center': channel,
+                'band': '5 GHz' if channel > 14 else '2.4 GHz',
+                'width': 'MHZ_20', 'security': parts[-1] if parts else '',
+                'phy': '',
+            })
+        except (ValueError, IndexError):
+            continue
+    return networks
+
+
+def _scan_linux():
+    """Scan WiFi on Linux using nmcli or iwlist."""
+    try:
+        result = subprocess.run(
+            ['nmcli', '-t', '-f', 'SSID,BSSID,SIGNAL,CHAN,FREQ,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'yes'],
+            capture_output=True, text=True, timeout=15
+        )
+        networks = []
+        for line in result.stdout.splitlines():
+            parts = line.split(':')
+            if len(parts) >= 5:
+                try:
+                    pct = int(parts[2])
+                    channel = int(parts[3])
+                    freq = int(parts[4]) if parts[4].isdigit() else 0
+                    networks.append({
+                        'ssid': parts[0], 'bssid': parts[1],
+                        'rssi': signal_pct_to_dbm(pct), 'noise': -95,
+                        'channel': channel, 'center': channel,
+                        'band': '5 GHz' if freq > 3000 or channel > 14 else '2.4 GHz',
+                        'width': 'MHZ_20', 'security': parts[5] if len(parts) > 5 else '',
+                        'phy': '',
+                    })
+                except (ValueError, IndexError):
+                    continue
+        return networks
+    except FileNotFoundError:
+        return []
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -335,20 +471,49 @@ def main():
     # Open browser after a short delay
     threading.Timer(0.5, lambda: webbrowser.open(url)).start()
 
-    # Serve files
+    # Serve files with WiFi scan API
     os.chdir(output_dir)
-    handler = http.server.SimpleHTTPRequestHandler
-    handler.extensions_map.update({
-        '.js': 'application/javascript',
-        '.css': 'text/css',
-        '.html': 'text/html',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-    })
+
+    class EditorHandler(http.server.SimpleHTTPRequestHandler):
+        extensions_map = {
+            **http.server.SimpleHTTPRequestHandler.extensions_map,
+            '.js': 'application/javascript',
+            '.css': 'text/css',
+            '.html': 'text/html',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+        }
+
+        def do_GET(self):
+            if self.path == '/api/scan':
+                self.handle_wifi_scan()
+            else:
+                super().do_GET()
+
+        def handle_wifi_scan(self):
+            try:
+                networks = scan_wifi_networks()
+                body = json.dumps(networks).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                body = json.dumps({'error': str(e)}).encode('utf-8')
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            # Suppress noisy request logs except errors
+            if '404' in str(args) or '500' in str(args):
+                super().log_message(format, *args)
 
     try:
-        with http.server.HTTPServer(('', args.port), handler) as httpd:
+        with http.server.HTTPServer(('', args.port), EditorHandler) as httpd:
             httpd.serve_forever()
     except KeyboardInterrupt:
         print("\n  Server stopped.")

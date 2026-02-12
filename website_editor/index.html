@@ -193,6 +193,32 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 }
 .editor-ap-dot.selected { box-shadow: 0 0 0 3px #e94560, 0 0 8px rgba(233,69,96,0.5); }
 
+/* Scan point markers */
+.editor-scan-dot {
+    width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5); cursor: pointer;
+}
+.editor-scan-dot.selected { box-shadow: 0 0 0 3px #e94560, 0 0 8px rgba(233,69,96,0.5); }
+.editor-scan-label {
+    background: rgba(0,0,0,0.7); color: #fff; padding: 1px 4px; border-radius: 3px;
+    font-size: 9px; white-space: nowrap; margin-top: 1px;
+}
+
+/* Export dropdown */
+.export-opt:hover { background: rgba(233,69,96,0.15); color: #e0e0e0; }
+
+/* Network table */
+.net-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.net-table th { text-align: left; padding: 3px 4px; color: #8899aa; border-bottom: 1px solid #0f3460; font-weight: 600; }
+.net-table td { padding: 3px 4px; border-bottom: 1px solid rgba(15,52,96,0.5); }
+.net-table tr:hover { background: rgba(233,69,96,0.08); }
+.net-scroll { max-height: 180px; overflow-y: auto; }
+
+/* CSV modal */
+.csv-modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); z-index: 3000; }
+.csv-modal-box { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 20px; width: 500px; max-width: 90vw; }
+.csv-modal-box textarea { width: 100%; height: 150px; background: #0f1a2e; color: #e0e0e0; border: 1px solid #0f3460; border-radius: 4px; padding: 8px; font-family: monospace; font-size: 11px; resize: vertical; }
+
 /* Legend */
 .legend-bar { height: 14px; border-radius: 3px; background: linear-gradient(to right, #d32f2f, #f57c00, #fbc02d, #4caf50, #1b5e20); }
 .legend-labels { display: flex; justify-content: space-between; font-size: 10px; color: #8899aa; margin-top: 2px; }
@@ -228,6 +254,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <button class="tb-tool" data-mode="scale" title="Scale (2)">Scale</button>
     <button class="tb-tool" data-mode="wall" title="Wall (3)">Wall</button>
     <button class="tb-tool" data-mode="ap" title="AP (4)">AP</button>
+    <button class="tb-tool" data-mode="scan" title="Scan Point (5)">Scan</button>
     <div class="tb-sep"></div>
     <div class="tb-right">
         <select id="band-select">
@@ -242,7 +269,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div class="tb-sep"></div>
         <button class="tb-btn" id="btn-save" title="Save project (.wfplan)">Save</button>
         <button class="tb-btn" id="btn-load" title="Load project (.wfplan)">Load</button>
-        <button class="tb-btn-export" id="btn-export" disabled>Export .netspp</button>
+        <div style="position:relative;display:inline-block">
+            <button class="tb-btn-export" id="btn-export" disabled>Export &#9662;</button>
+            <div id="export-menu" style="display:none;position:absolute;right:0;top:100%;min-width:180px;background:#16213e;border:1px solid #0f3460;border-radius:6px;overflow:hidden;z-index:2000">
+                <div class="export-opt" id="export-netspp" style="padding:8px 14px;cursor:pointer;font-size:12px;color:#aabbcc">Export .netspp (Planning)</div>
+                <div class="export-opt" id="export-netspu" style="padding:8px 14px;cursor:pointer;font-size:12px;color:#aabbcc">Export .netspu (Survey)</div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -267,11 +300,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <div class="welcome-btn" id="btn-import-netspp">
                 <div class="welcome-btn-icon">&#8681;</div>
                 <div class="welcome-btn-label">Import .netspp</div>
-                <div class="welcome-btn-hint">Open existing NetSpot project</div>
+                <div class="welcome-btn-hint">Open planning project</div>
+            </div>
+            <div class="welcome-btn" id="btn-import-netspu">
+                <div class="welcome-btn-icon">&#8681;</div>
+                <div class="welcome-btn-label">Import .netspu</div>
+                <div class="welcome-btn-hint">Open survey project</div>
             </div>
         </div>
         <input type="file" id="welcome-file-input" accept="image/*" style="display:none">
         <input type="file" id="welcome-netspp-input" accept=".netspp" style="display:none">
+        <input type="file" id="welcome-netspu-input" accept=".netspu" style="display:none">
     </div>
 </div>
 
@@ -340,8 +379,8 @@ let IMG_W = 0, IMG_H = 0;
 
 // Editor state
 let currentMode = 'select';
-let selectedItem = null; // { type: 'wall'|'ap', idx }
-let nextWallId = 1, nextApId = 1;
+let selectedItem = null; // { type: 'wall'|'ap'|'scanpoint', idx }
+let nextWallId = 1, nextApId = 1, nextScanId = 1;
 
 // Scale calibration
 let scaleState = { point1: null, point2: null, markers: [], line: null, pixelDist: null };
@@ -369,6 +408,7 @@ let imageOverlay = null;
 const scaleLayer = L.layerGroup().addTo(map);
 const wallLayer = L.layerGroup().addTo(map);
 const apMarkerLayer = L.layerGroup().addTo(map);
+const scanPointLayer = L.layerGroup().addTo(map);
 let heatmapLayer = null;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -407,6 +447,12 @@ document.getElementById('btn-import-netspp').addEventListener('click', () => {
 document.getElementById('welcome-netspp-input').addEventListener('change', (e) => {
     if (e.target.files[0]) importNetsppFile(e.target.files[0]);
 });
+document.getElementById('btn-import-netspu').addEventListener('click', () => {
+    document.getElementById('welcome-netspu-input').click();
+});
+document.getElementById('welcome-netspu-input').addEventListener('change', (e) => {
+    if (e.target.files[0]) importNetspuFile(e.target.files[0]);
+});
 
 // ── Zone file upload (add zone) ──────────────────────────────────────────
 
@@ -442,6 +488,7 @@ function handleImage(file) {
                 imageHeight: img.height,
                 walls: [],
                 aps: [],
+                scanPoints: [],
             };
             // Store binary for export
             const r2 = new FileReader();
@@ -571,6 +618,7 @@ function setupMapForZone() {
     clearScaleState();
     rebuildWalls();
     rebuildAPs();
+    rebuildScanPoints();
     if (heatmapLayer) heatmapLayer._update();
     updateSidebar();
     checkAutoHeatmap();
@@ -604,6 +652,10 @@ function setMode(mode) {
         selectedItem = null;
         setHint('Click on the map to place an access point');
         map.getContainer().style.cursor = 'crosshair';
+    } else if (mode === 'scan') {
+        selectedItem = null;
+        setHint('Click on the map to place a scan point');
+        map.getContainer().style.cursor = 'crosshair';
     }
     updateSidebar();
 }
@@ -632,6 +684,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === '2') setMode('scale');
     if (e.key === '3') setMode('wall');
     if (e.key === '4') setMode('ap');
+    if (e.key === '5') setMode('scan');
 });
 
 // ── Map Click Handler ────────────────────────────────────────────────────
@@ -642,6 +695,7 @@ map.on('click', (e) => {
     if (currentMode === 'scale') handleScaleClick(e.latlng);
     else if (currentMode === 'wall') handleWallClick(e.latlng);
     else if (currentMode === 'ap') handleAPClick(e.latlng);
+    else if (currentMode === 'scan') handleScanClick(e.latlng);
     else if (currentMode === 'select') {
         selectedItem = null;
         updateSidebar();
@@ -859,6 +913,82 @@ function rebuildAPs() {
 
 function updateAPHighlights() { rebuildAPs(); }
 
+// ── Scan Point Placement ─────────────────────────────────────────────────
+
+function handleScanClick(latlng) {
+    const [px, py] = toPixel(latlng);
+    const sp = {
+        id: nextScanId++,
+        px: Math.round(px * 10) / 10,
+        py: Math.round(py * 10) / 10,
+        time: new Date().toISOString().replace('T', ' ').split('.')[0],
+        networks: [],
+    };
+    zone().scanPoints.push(sp);
+    selectedItem = { type: 'scanpoint', idx: zone().scanPoints.length - 1 };
+    rebuildScanPoints();
+    updateSidebar();
+    setHint('Scanning WiFi networks...');
+
+    // Auto-scan WiFi via local server API
+    fetch('/api/scan').then(r => r.json()).then(nets => {
+        if (Array.isArray(nets) && nets.length > 0) {
+            sp.networks = nets;
+            rebuildScanPoints();
+            updateSidebar();
+            setHint('Scan point #' + sp.id + ': captured ' + nets.length + ' network(s)');
+        } else {
+            setHint('Scan point #' + sp.id + ': no networks found (add manually)');
+        }
+    }).catch(() => {
+        setHint('Scan point #' + sp.id + ': WiFi scan unavailable (add networks manually)');
+    });
+}
+
+function rebuildScanPoints() {
+    scanPointLayer.clearLayers();
+    if (!zone()) return;
+    (zone().scanPoints || []).forEach((sp, idx) => {
+        // Color by best signal
+        let bestRssi = null;
+        sp.networks.forEach(n => { if (bestRssi === null || n.rssi > bestRssi) bestRssi = n.rssi; });
+        let dotColor = '#667788';
+        if (bestRssi !== null) {
+            const [r, g, b] = rssiToRGB(bestRssi);
+            dotColor = 'rgb(' + r + ',' + g + ',' + b + ')';
+        }
+        const isSelected = selectedItem && selectedItem.type === 'scanpoint' && selectedItem.idx === idx;
+        const icon = L.divIcon({
+            className: '',
+            html: '<div style="display:flex;flex-direction:column;align-items:center">'
+                + '<div class="editor-scan-dot' + (isSelected ? ' selected' : '') + '" style="background:' + dotColor + '"></div>'
+                + '<div class="editor-scan-label">#' + sp.id + (sp.networks.length ? ' (' + sp.networks.length + ')' : '') + '</div>'
+                + '</div>',
+            iconSize: [50, 28], iconAnchor: [25, 7],
+        });
+        const marker = L.marker(toLatLng(sp.px, sp.py), {
+            icon, draggable: true, bubblingMouseEvents: false,
+        });
+        marker.on('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            selectedItem = { type: 'scanpoint', idx };
+            setMode('select');
+            updateSidebar();
+            rebuildScanPoints();
+        });
+        marker.on('dragend', (e) => {
+            const [px, py] = toPixel(e.target.getLatLng());
+            sp.px = Math.round(px * 10) / 10;
+            sp.py = Math.round(py * 10) / 10;
+            updateSidebar();
+        });
+        if (bestRssi !== null) {
+            marker.bindTooltip(bestRssi + ' dBm | ' + sp.networks.length + ' networks', { sticky: true });
+        }
+        scanPointLayer.addLayer(marker);
+    });
+}
+
 // ── Delete selected ──────────────────────────────────────────────────────
 
 function deleteSelected() {
@@ -869,6 +999,9 @@ function deleteSelected() {
     } else if (selectedItem.type === 'ap') {
         zone().aps.splice(selectedItem.idx, 1);
         rebuildAPs();
+    } else if (selectedItem.type === 'scanpoint') {
+        zone().scanPoints.splice(selectedItem.idx, 1);
+        rebuildScanPoints();
     }
     selectedItem = null;
     updateSidebar();
@@ -1099,6 +1232,7 @@ function updateSidebar() {
     if (currentMode === 'scale') html += renderScalePanel();
     else if (currentMode === 'wall') html += renderWallToolPanel();
     else if (currentMode === 'ap') html += renderAPToolPanel();
+    else if (currentMode === 'scan') html += renderScanToolPanel();
 
     // Selected item properties
     if (selectedItem) html += renderSelectedPanel();
@@ -1113,6 +1247,7 @@ function updateSidebar() {
 
     // Item lists
     html += renderAPList();
+    html += renderScanPointList();
     html += renderWallList();
 
     sb.innerHTML = html;
@@ -1176,6 +1311,13 @@ function renderAPToolPanel() {
     return h;
 }
 
+function renderScanToolPanel() {
+    let h = '<div class="panel"><div class="panel-title">Scan Point Placement</div>';
+    h += '<div class="hint">Click on the map to place a scan point. Select it to add WiFi network data.</div>';
+    h += '</div>';
+    return h;
+}
+
 function renderSelectedPanel() {
     if (!selectedItem || !zone()) return '';
     let h = '<div class="panel">';
@@ -1219,6 +1361,44 @@ function renderSelectedPanel() {
         WIDTHS_5G.forEach(w2 => { h += '<option value="' + w2 + '"' + (w2 === ap.radios['5g'].width ? ' selected' : '') + '>' + w2.replace('MHZ_', '') + ' MHz</option>'; });
         h += '</select>';
         h += '<div class="btn-row" style="margin-top:8px"><button class="btn-sm btn-danger" id="btn-del-selected">Delete AP</button></div>';
+    } else if (selectedItem.type === 'scanpoint') {
+        const sp = zone().scanPoints[selectedItem.idx];
+        if (!sp) return '';
+        h += '<div class="panel-title">Scan Point #' + sp.id + '</div>';
+        h += '<div class="value-row"><span class="lbl">Time</span><span class="val">' + esc(sp.time) + '</span></div>';
+        if (zone().scale) {
+            h += '<div class="value-row"><span class="lbl">Position</span><span class="val">' + (sp.px / zone().scale).toFixed(1) + 'm, ' + (sp.py / zone().scale).toFixed(1) + 'm</span></div>';
+        }
+        let bestSig = null;
+        sp.networks.forEach(n => { if (bestSig === null || n.rssi > bestSig) bestSig = n.rssi; });
+        if (bestSig !== null) {
+            h += '<div class="value-row"><span class="lbl">Best signal</span><span class="val">' + bestSig + ' dBm</span></div>';
+        }
+        h += '<div class="value-row"><span class="lbl">Networks</span><span class="val">' + sp.networks.length + '</span></div>';
+
+        // Network table
+        if (sp.networks.length > 0) {
+            h += '<div class="net-scroll"><table class="net-table"><thead><tr><th>SSID</th><th>RSSI</th><th>Ch</th><th>Band</th><th></th></tr></thead><tbody>';
+            sp.networks.forEach((n, ni) => {
+                h += '<tr><td title="' + esc(n.bssid) + '">' + esc(n.ssid || '(hidden)') + '</td>';
+                h += '<td>' + n.rssi + '</td><td>' + n.channel + '</td>';
+                h += '<td>' + (n.band === '5 GHz' ? '5G' : '2.4G') + '</td>';
+                h += '<td><span class="item-del" data-del="network" data-idx="' + ni + '" style="cursor:pointer">&times;</span></td></tr>';
+            });
+            h += '</tbody></table></div>';
+        }
+
+        // Add network form
+        h += '<div class="panel-title" style="margin-top:10px">Add Network</div>';
+        h += '<label>SSID</label><input type="text" id="net-ssid" placeholder="Network name">';
+        h += '<label>BSSID</label><input type="text" id="net-bssid" placeholder="AA:BB:CC:DD:EE:FF">';
+        h += '<label>RSSI (dBm)</label><input type="number" id="net-rssi" value="-65" min="-100" max="0">';
+        h += '<label>Channel</label><input type="number" id="net-channel" value="36" min="1" max="177">';
+        h += '<label>Band</label><select id="net-band"><option value="5 GHz">5 GHz</option><option value="2.4 GHz">2.4 GHz</option></select>';
+        h += '<label>Width</label><select id="net-width"><option value="MHZ_20">20 MHz</option><option value="MHZ_40">40 MHz</option><option value="MHZ_80" selected>80 MHz</option><option value="MHZ_160">160 MHz</option></select>';
+        h += '<div class="btn-row" style="margin-top:6px"><button class="btn-sm btn-primary" id="btn-add-network">Add</button>';
+        h += '<button class="btn-sm" id="btn-paste-csv">Paste CSV</button></div>';
+        h += '<div class="btn-row" style="margin-top:8px"><button class="btn-sm btn-danger" id="btn-del-selected">Delete Scan Point</button></div>';
     }
     h += '</div>';
     return h;
@@ -1254,6 +1434,29 @@ function renderAPList() {
         if (ap.radios['5g']) bands.push('5G');
         h += '<span class="item-info">' + bands.join('/') + '</span>';
         h += '<span class="item-del" data-del="ap" data-idx="' + idx + '">&times;</span>';
+        h += '</div>';
+    });
+    h += '</div></div>';
+    return h;
+}
+
+function renderScanPointList() {
+    if (!zone() || !zone().scanPoints || zone().scanPoints.length === 0) return '';
+    let h = '<div class="panel"><div class="panel-title">Scan Points (' + zone().scanPoints.length + ')</div><div class="item-list">';
+    zone().scanPoints.forEach((sp, idx) => {
+        let bestSig = null;
+        sp.networks.forEach(n => { if (bestSig === null || n.rssi > bestSig) bestSig = n.rssi; });
+        let dotColor = '#667788';
+        if (bestSig !== null) {
+            const [r, g, b] = rssiToRGB(bestSig);
+            dotColor = 'rgb(' + r + ',' + g + ',' + b + ')';
+        }
+        const sel = selectedItem && selectedItem.type === 'scanpoint' && selectedItem.idx === idx;
+        h += '<div class="item-row' + (sel ? ' selected' : '') + '" data-type="scanpoint" data-idx="' + idx + '">';
+        h += '<div class="item-dot" style="background:' + dotColor + '"></div>';
+        h += '<span class="item-name">#' + sp.id + '</span>';
+        h += '<span class="item-info">' + (bestSig !== null ? bestSig + ' dBm' : 'empty') + ' (' + sp.networks.length + ')</span>';
+        h += '<span class="item-del" data-del="scanpoint" data-idx="' + idx + '">&times;</span>';
         h += '</div>';
     });
     h += '</div></div>';
@@ -1349,6 +1552,40 @@ function attachSidebarEvents() {
     const sw5g = document.getElementById('sel-w5g');
     if (sw5g) sw5g.addEventListener('change', () => { zone().aps[selectedItem.idx].radios['5g'].width = sw5g.value; });
 
+    // Add network to scan point
+    const btnAddNet = document.getElementById('btn-add-network');
+    if (btnAddNet) btnAddNet.addEventListener('click', () => {
+        const sp = zone().scanPoints[selectedItem.idx];
+        if (!sp) return;
+        sp.networks.push({
+            ssid: document.getElementById('net-ssid').value || '',
+            bssid: document.getElementById('net-bssid').value || '',
+            rssi: parseFloat(document.getElementById('net-rssi').value) || -65,
+            noise: -95,
+            channel: parseInt(document.getElementById('net-channel').value) || 36,
+            center: parseInt(document.getElementById('net-channel').value) || 36,
+            width: document.getElementById('net-width').value || 'MHZ_80',
+            band: document.getElementById('net-band').value || '5 GHz',
+            security: '', phy: '',
+        });
+        rebuildScanPoints();
+        updateSidebar();
+    });
+
+    // Paste CSV
+    const btnCsv = document.getElementById('btn-paste-csv');
+    if (btnCsv) btnCsv.addEventListener('click', showCsvModal);
+
+    // Delete network from scan point
+    document.querySelectorAll('.item-del[data-del="network"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const ni = parseInt(btn.dataset.idx);
+            const sp = zone().scanPoints[selectedItem.idx];
+            if (sp) { sp.networks.splice(ni, 1); rebuildScanPoints(); updateSidebar(); }
+        });
+    });
+
     // Delete button
     const btnDel = document.getElementById('btn-del-selected');
     if (btnDel) btnDel.addEventListener('click', deleteSelected);
@@ -1373,14 +1610,62 @@ function attachSidebarEvents() {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const type = btn.dataset.del;
+            if (type === 'network') return; // handled separately
             const idx = parseInt(btn.dataset.idx);
             if (type === 'wall') zone().walls.splice(idx, 1);
+            else if (type === 'scanpoint') zone().scanPoints.splice(idx, 1);
             else zone().aps.splice(idx, 1);
             if (selectedItem && selectedItem.type === type && selectedItem.idx === idx) selectedItem = null;
             else if (selectedItem && selectedItem.type === type && selectedItem.idx > idx) selectedItem.idx--;
-            rebuildWalls(); rebuildAPs(); updateSidebar();
+            rebuildWalls(); rebuildAPs(); rebuildScanPoints(); updateSidebar();
             if (heatmapLayer) heatmapLayer._update();
         });
+    });
+}
+
+// ── CSV Paste Modal ──────────────────────────────────────────────────────
+
+function showCsvModal() {
+    const modal = document.createElement('div');
+    modal.className = 'csv-modal';
+    modal.innerHTML = '<div class="csv-modal-box">'
+        + '<div style="font-size:14px;font-weight:600;margin-bottom:10px;color:#e94560">Paste Network Data (CSV)</div>'
+        + '<div style="font-size:11px;color:#8899aa;margin-bottom:8px">Format: SSID, BSSID, RSSI, Channel, Band (2.4/5), Width (20/40/80/160)<br>One network per line. Tab or comma separated.</div>'
+        + '<textarea id="csv-textarea" placeholder="Corp-WiFi, AA:BB:CC:DD:EE:FF, -65, 36, 5, 80"></textarea>'
+        + '<div style="display:flex;gap:8px;margin-top:10px">'
+        + '<button class="btn-sm btn-primary" id="csv-import">Import</button>'
+        + '<button class="btn-sm" id="csv-cancel">Cancel</button>'
+        + '</div></div>';
+    document.body.appendChild(modal);
+
+    modal.querySelector('#csv-cancel').addEventListener('click', () => modal.remove());
+    modal.querySelector('#csv-import').addEventListener('click', () => {
+        const text = document.getElementById('csv-textarea').value.trim();
+        if (!text) { modal.remove(); return; }
+        const sp = zone().scanPoints[selectedItem.idx];
+        if (!sp) { modal.remove(); return; }
+
+        const lines = text.split('\n');
+        let added = 0;
+        for (const line of lines) {
+            const parts = line.split(/[,\t;]+/).map(s => s.trim());
+            if (parts.length < 3) continue;
+            const ssid = parts[0] || '';
+            const bssid = parts[1] || '';
+            const rssi = parseFloat(parts[2]);
+            if (isNaN(rssi)) continue;
+            const channel = parseInt(parts[3]) || 36;
+            const bandRaw = (parts[4] || '5').trim();
+            const band = bandRaw.includes('2') ? '2.4 GHz' : '5 GHz';
+            const widthRaw = parseInt(parts[5]) || 80;
+            const width = 'MHZ_' + widthRaw;
+            sp.networks.push({ ssid, bssid, rssi, noise: -95, channel, center: channel, width, band, security: '', phy: '' });
+            added++;
+        }
+        modal.remove();
+        rebuildScanPoints();
+        updateSidebar();
+        setHint('Added ' + added + ' network(s) to scan point #' + sp.id);
     });
 }
 
@@ -1410,6 +1695,7 @@ function saveProject() {
             imageHeight: z.imageHeight,
             walls: z.walls,
             aps: z.aps,
+            scanPoints: z.scanPoints || [],
         })),
     };
     const json = JSON.stringify(data);
@@ -1452,6 +1738,7 @@ function loadProject(file) {
                     imageHeight: zd.imageHeight,
                     walls: zd.walls || [],
                     aps: zd.aps || [],
+                    scanPoints: zd.scanPoints || [],
                 };
                 // Convert data URL to ArrayBuffer for export
                 if (z.imageDataUrl) {
@@ -1462,6 +1749,7 @@ function loadProject(file) {
                 // Track max IDs
                 z.walls.forEach(w => { if (w.id >= nextWallId) nextWallId = w.id + 1; });
                 z.aps.forEach(ap => { if (ap.id >= nextApId) nextApId = ap.id + 1; });
+                z.scanPoints.forEach(sp => { if (sp.id >= nextScanId) nextScanId = sp.id + 1; });
             });
 
             currentZoneIdx = 0;
@@ -1627,6 +1915,7 @@ async function importNetsppFile(file) {
                 imageHeight: imgH,
                 walls: walls,
                 aps: aps,
+                scanPoints: [],
             });
         }
 
@@ -1677,9 +1966,26 @@ function hideLoading() {
     loadingOverlay.classList.add('hidden');
 }
 
-// ── Export .netspp ────────────────────────────────────────────────────────
+// ── Export .netspp / .netspu ──────────────────────────────────────────────
 
-document.getElementById('btn-export').addEventListener('click', exportNetspp);
+document.getElementById('btn-export').addEventListener('click', () => {
+    const menu = document.getElementById('export-menu');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+});
+document.addEventListener('click', (e) => {
+    const menu = document.getElementById('export-menu');
+    if (menu && !e.target.closest('#btn-export') && !e.target.closest('#export-menu')) {
+        menu.style.display = 'none';
+    }
+});
+document.getElementById('export-netspp').addEventListener('click', () => {
+    document.getElementById('export-menu').style.display = 'none';
+    exportNetspp();
+});
+document.getElementById('export-netspu').addEventListener('click', () => {
+    document.getElementById('export-menu').style.display = 'none';
+    exportNetspu();
+});
 
 async function exportNetspp() {
     const btn = document.getElementById('btn-export');
@@ -1815,7 +2121,251 @@ async function exportNetspp() {
     }
 
     btn.disabled = false;
-    btn.textContent = 'Export .netspp';
+    btn.textContent = 'Export \u25BE';
+}
+
+// ── Export .netspu (Survey) ──────────────────────────────────────────────
+
+async function exportNetspu() {
+    const btn = document.getElementById('btn-export');
+    btn.disabled = true;
+    btn.textContent = 'Exporting...';
+
+    try {
+        // Check if any scan points exist
+        let totalScan = 0;
+        project.zones.forEach(z => { totalScan += (z.scanPoints || []).length; });
+        if (totalScan === 0) {
+            setHint('No scan points to export. Place scan points first.');
+            btn.disabled = false;
+            btn.textContent = 'Export \u25BE';
+            return;
+        }
+
+        const SQL = await loadSqlJs();
+        const db = new SQL.Database();
+
+        // Create survey schema
+        db.run(`CREATE TABLE SurveyData (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT, Description TEXT,
+            TimeCreated datetime, TimeModified datetime, AppVersion TEXT
+        )`);
+        db.run(`CREATE TABLE Zones (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT, MapId INTEGER, Scale REAL
+        )`);
+        db.run(`CREATE TABLE Maps (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, OriginalName TEXT, PngName TEXT, Data BLOB
+        )`);
+        db.run(`CREATE TABLE Snapshots (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, ZoneId INTEGER, Name TEXT
+        )`);
+        db.run(`CREATE TABLE ScanPoints (
+            _id INTEGER PRIMARY KEY AUTOINCREMENT, SnapId INTEGER, x REAL, y REAL, Time datetime
+        )`);
+        db.run(`CREATE TABLE WlanNetworks (
+            ScanPointId INTEGER, BSSID TEXT, SSID TEXT, RSSI REAL, Noise REAL,
+            ChannelPrimary INTEGER, ChannelCenter INTEGER, ChannelWidth TEXT,
+            WiFiBand INTEGER, SecurityMode TEXT, PHYModes TEXT
+        )`);
+
+        const now = new Date().toISOString().replace('T', ' ').split('.')[0];
+        db.run(`INSERT INTO SurveyData (Name, Description, TimeCreated, TimeModified, AppVersion)
+                VALUES (?, '', ?, ?, 'WiFi Planner Editor 1.0')`,
+            [project.name, now, now]);
+
+        const jszip = new JSZip();
+        let scanPointDbId = 1;
+
+        for (let zi = 0; zi < project.zones.length; zi++) {
+            const z = project.zones[zi];
+            const mapId = zi + 1;
+            const zoneId = zi + 1;
+            const snapId = zi + 1;
+            const dbScale = z.scale ? z.scale / 100 : 0.1;
+            const coordScale = z.scale || 1;
+
+            db.run(`INSERT INTO Maps (_id, OriginalName, PngName, Data) VALUES (?, ?, ?, NULL)`,
+                [mapId, z.imageFileName, z.imageFileName]);
+            db.run(`INSERT INTO Zones (_id, Name, MapId, Scale) VALUES (?, ?, ?, ?)`,
+                [zoneId, z.name, mapId, dbScale]);
+            db.run(`INSERT INTO Snapshots (_id, ZoneId, Name) VALUES (?, ?, ?)`,
+                [snapId, zoneId, 'Survey ' + now.split(' ')[0]]);
+
+            for (const sp of (z.scanPoints || [])) {
+                const xDb = sp.px / coordScale;
+                const yDb = sp.py / coordScale;
+                const spDbId = scanPointDbId++;
+                db.run(`INSERT INTO ScanPoints (_id, SnapId, x, y, Time) VALUES (?, ?, ?, ?, ?)`,
+                    [spDbId, snapId, xDb, yDb, sp.time]);
+
+                for (const net of sp.networks) {
+                    const wifiBand = net.band === '2.4 GHz' ? 0 : 1;
+                    db.run(`INSERT INTO WlanNetworks (ScanPointId, BSSID, SSID, RSSI, Noise,
+                            ChannelPrimary, ChannelCenter, ChannelWidth, WiFiBand, SecurityMode, PHYModes)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [spDbId, net.bssid, net.ssid, net.rssi, net.noise || -95,
+                         net.channel, net.center || net.channel, net.width || 'MHZ_80',
+                         wifiBand, net.security || '', net.phy || '']);
+                }
+            }
+
+            if (z.imageBlob) {
+                jszip.file('Maps/' + z.imageFileName, z.imageBlob);
+            }
+        }
+
+        const dbData = db.export();
+        db.close();
+        jszip.file('database.db3', dbData);
+
+        const blob = await jszip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = project.name.replace(/[^a-zA-Z0-9_-]/g, '_') + '.netspu';
+        a.click();
+        URL.revokeObjectURL(url);
+        setHint('Exported .netspu successfully (' + totalScan + ' scan points)');
+
+    } catch (err) {
+        console.error('Export .netspu failed:', err);
+        setHint('Export failed: ' + err.message);
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Export \u25BE';
+}
+
+// ── Import .netspu (Survey) ──────────────────────────────────────────────
+
+async function importNetspuFile(file) {
+    showLoading('Importing .netspu...');
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const zip = await JSZip.loadAsync(arrayBuffer);
+        const SQL = await loadSqlJs();
+
+        const dbFile = zip.file('database.db3');
+        if (!dbFile) throw new Error('database.db3 not found in archive');
+        const dbBuf = await dbFile.async('arraybuffer');
+        const db = new SQL.Database(new Uint8Array(dbBuf));
+
+        // Read survey info
+        const surveyRows = db.exec("SELECT Name, TimeCreated, TimeModified FROM SurveyData LIMIT 1");
+        if (surveyRows.length > 0 && surveyRows[0].values.length > 0) {
+            project.name = surveyRows[0].values[0][0] || file.name.replace(/\.[^.]+$/, '');
+        } else {
+            project.name = file.name.replace(/\.[^.]+$/, '');
+        }
+        document.getElementById('project-name').value = project.name;
+
+        // Read zones and maps
+        const zoneRows = db.exec(`
+            SELECT z._id, z.Name, z.Scale, m.PngName
+            FROM Zones z JOIN Maps m ON m._id = z.MapId ORDER BY z._id
+        `);
+        if (!zoneRows.length || !zoneRows[0].values.length) throw new Error('No zones found');
+
+        // Read snapshots
+        const snapRows = db.exec("SELECT _id, ZoneId FROM Snapshots ORDER BY _id");
+        const snapsByZone = {};
+        if (snapRows.length > 0) {
+            snapRows[0].values.forEach(r => {
+                if (!snapsByZone[r[1]]) snapsByZone[r[1]] = [];
+                snapsByZone[r[1]].push(r[0]);
+            });
+        }
+
+        project.zones = [];
+        currentZoneIdx = -1;
+
+        for (const row of zoneRows[0].values) {
+            const zoneId = row[0];
+            const zoneName = row[1];
+            const scale = row[2];
+            const pngName = row[3];
+            const coordScale = scale * 100;
+
+            // Load floor plan from ZIP
+            const mapFile = zip.file('Maps/' + pngName);
+            let imageDataUrl = '', imageBlob = null, imgW = 1000, imgH = 1000;
+            if (mapFile) {
+                const imgBuf = await mapFile.async('arraybuffer');
+                imageBlob = imgBuf;
+                const imgBytes = new Uint8Array(imgBuf);
+                let mimeType = 'image/png';
+                if (imgBytes[0] === 0xFF && imgBytes[1] === 0xD8) mimeType = 'image/jpeg';
+                imageDataUrl = 'data:' + mimeType + ';base64,' + arrayBufferToBase64(imgBuf);
+                const dims = await getImageDimensions(imageDataUrl);
+                imgW = dims.width; imgH = dims.height;
+            }
+
+            // Read scan points for this zone's snapshots
+            const scanPoints = [];
+            const zoneSnaps = snapsByZone[zoneId] || [];
+            if (zoneSnaps.length > 0) {
+                const snapIdList = zoneSnaps.join(',');
+                const spRows = db.exec(`SELECT _id, SnapId, x, y, Time FROM ScanPoints WHERE SnapId IN (${snapIdList}) ORDER BY _id`);
+                if (spRows.length > 0) {
+                    const spIds = spRows[0].values.map(r => r[0]);
+                    // Read networks
+                    const netsByPoint = {};
+                    if (spIds.length > 0) {
+                        const netRows = db.exec(`SELECT ScanPointId, BSSID, SSID, RSSI, Noise,
+                            ChannelPrimary, ChannelCenter, ChannelWidth, WiFiBand, SecurityMode, PHYModes
+                            FROM WlanNetworks WHERE ScanPointId IN (${spIds.join(',')}) ORDER BY ScanPointId, RSSI DESC`);
+                        if (netRows.length > 0) {
+                            netRows[0].values.forEach(nr => {
+                                const spId = nr[0];
+                                if (!netsByPoint[spId]) netsByPoint[spId] = [];
+                                netsByPoint[spId].push({
+                                    bssid: nr[1] || '', ssid: nr[2] || '', rssi: nr[3], noise: nr[4] || -95,
+                                    channel: nr[5], center: nr[6] || nr[5], width: nr[7] || 'MHZ_80',
+                                    band: nr[8] === 0 ? '2.4 GHz' : '5 GHz',
+                                    security: nr[9] || '', phy: nr[10] || '',
+                                });
+                            });
+                        }
+                    }
+
+                    spRows[0].values.forEach(r => {
+                        scanPoints.push({
+                            id: nextScanId++,
+                            px: Math.round(r[2] * coordScale * 10) / 10,
+                            py: Math.round(r[3] * coordScale * 10) / 10,
+                            time: r[4] || '',
+                            networks: netsByPoint[r[0]] || [],
+                        });
+                    });
+                }
+            }
+
+            project.zones.push({
+                name: zoneName, scale: coordScale,
+                imageDataUrl, imageBlob, imageFileName: pngName,
+                imageWidth: imgW, imageHeight: imgH,
+                walls: [], aps: [], scanPoints,
+            });
+        }
+
+        db.close();
+
+        currentZoneIdx = 0;
+        welcomeOverlay.classList.add('hidden');
+        setupMapForZone();
+        renderZoneTabs();
+        document.getElementById('btn-export').disabled = false;
+        setMode('select');
+        let totalSp = 0;
+        project.zones.forEach(z => totalSp += z.scanPoints.length);
+        setHint('Imported ' + project.zones.length + ' zone(s), ' + totalSp + ' scan points from .netspu');
+        hideLoading();
+
+    } catch (err) {
+        hideLoading();
+        console.error('Import .netspu failed:', err);
+        alert('Failed to import .netspu: ' + err.message);
+    }
 }
 
 function loadSqlJs() {
@@ -1897,6 +2447,7 @@ function loadFromPreload(data) {
                     height: a.height || 3.0,
                     radios: a.radios || { '2g': { channel: 1, power: 20, width: 'MHZ_20' }, '5g': { channel: 36, power: 20, width: 'MHZ_80' } },
                 })),
+                scanPoints: [],
             };
 
             // Fetch image as blob for export
@@ -1943,7 +2494,7 @@ function loadFromPreload(data) {
 
 // Expose API for testing and preload integration
 window._editor = { project, setupMapForZone, renderZoneTabs, setMode, setHint,
-    enableHeatmap, disableHeatmap, checkAutoHeatmap, rebuildWalls, rebuildAPs, updateSidebar };
+    enableHeatmap, disableHeatmap, checkAutoHeatmap, rebuildWalls, rebuildAPs, rebuildScanPoints, updateSidebar };
 
 updateSidebar();
 tryLoadPreload();
