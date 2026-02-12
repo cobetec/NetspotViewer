@@ -7,41 +7,69 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; height: 100vh; background: #1a1a2e; color: #e0e0e0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; height: 100vh; background: #1a1a2e; color: #e0e0e0; overflow: hidden; }
 
 /* ── Toolbar ── */
 #toolbar {
     height: 48px; min-height: 48px; background: #0f1a2e; display: flex; align-items: center;
     padding: 0 16px; gap: 12px; border-bottom: 1px solid #0f3460; z-index: 1001;
 }
-.tb-title { font-size: 15px; font-weight: 700; color: #e94560; margin-right: 8px; }
+.tb-title { font-size: 15px; font-weight: 700; color: #e94560; margin-right: 8px; white-space: nowrap; }
 #project-name {
     background: transparent; border: 1px solid transparent; color: #e0e0e0; font-size: 13px;
-    padding: 4px 8px; border-radius: 4px; width: 180px;
+    padding: 4px 8px; border-radius: 4px; width: 160px;
 }
 #project-name:focus { border-color: #0f3460; outline: none; background: #16213e; }
-.tb-sep { width: 1px; height: 28px; background: #0f3460; }
+.tb-sep { width: 1px; height: 28px; background: #0f3460; flex-shrink: 0; }
 .tb-tool {
     padding: 6px 14px; border-radius: 6px; border: 1px solid #0f3460; background: #16213e;
     color: #aabbcc; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s;
-    text-transform: uppercase; letter-spacing: 0.5px;
+    text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;
 }
 .tb-tool:hover { border-color: #e94560; color: #e0e0e0; }
 .tb-tool.active { background: #e94560; color: #fff; border-color: #e94560; }
-.tb-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.tb-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .tb-right select {
     padding: 5px 8px; border-radius: 4px; border: 1px solid #0f3460;
     background: #16213e; color: #e0e0e0; font-size: 12px;
 }
-.tb-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; color: #aabbcc; }
-.tb-toggle input { accent-color: #e94560; }
+.tb-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; color: #aabbcc; white-space: nowrap; }
+.tb-toggle input[type="checkbox"] { accent-color: #e94560; }
+.tb-toggle input[type="range"] { width: 60px; accent-color: #e94560; }
+.tb-btn {
+    padding: 6px 14px; border-radius: 6px; border: 1px solid #0f3460;
+    background: #16213e; color: #aabbcc; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.tb-btn:hover { border-color: #e94560; color: #e0e0e0; }
 .tb-btn-export {
     padding: 6px 16px; border-radius: 6px; border: none;
     background: linear-gradient(135deg, #e94560 0%, #c23152 100%);
     color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+    white-space: nowrap;
 }
 .tb-btn-export:hover { opacity: 0.85; }
 .tb-btn-export:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Zone tabs ── */
+#zone-tabs {
+    height: 32px; min-height: 32px; background: #0f1a2e; display: flex; align-items: stretch;
+    padding: 0 16px; gap: 2px; border-bottom: 1px solid #0f3460; overflow-x: auto;
+}
+#zone-tabs:empty { display: none; }
+.zone-tab {
+    padding: 4px 16px; font-size: 12px; color: #aabbcc; cursor: pointer;
+    border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0;
+    background: transparent; transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+}
+.zone-tab:hover { color: #e0e0e0; background: #16213e; }
+.zone-tab.active { color: #e94560; background: #1a1a2e; border-color: #0f3460; font-weight: 600; }
+.zone-tab-add {
+    padding: 4px 12px; font-size: 14px; color: #667788; cursor: pointer;
+    background: transparent; border: none; transition: color 0.15s;
+}
+.zone-tab-add:hover { color: #e94560; }
 
 /* ── Main area ── */
 #main { display: flex; flex: 1; overflow: hidden; }
@@ -95,10 +123,34 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 /* ── Map ── */
 #map { flex: 1; background: #111; cursor: crosshair; }
 
-/* ── Upload overlay ── */
+/* ── Welcome overlay ── */
+#welcome-overlay {
+    position: absolute; inset: 0; top: 48px; display: flex; align-items: center;
+    justify-content: center; z-index: 999; background: rgba(26,26,46,0.97);
+}
+#welcome-overlay.hidden { display: none; }
+.welcome-box {
+    text-align: center; max-width: 500px;
+}
+.welcome-title { font-size: 28px; font-weight: 700; color: #e94560; margin-bottom: 8px; }
+.welcome-sub { font-size: 14px; color: #667788; margin-bottom: 36px; }
+.welcome-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.welcome-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 28px 36px; border: 2px dashed #0f3460; border-radius: 16px;
+    background: transparent; color: #aabbcc; cursor: pointer; transition: all 0.2s;
+    min-width: 180px;
+}
+.welcome-btn:hover { border-color: #e94560; color: #e0e0e0; background: rgba(233,69,96,0.05); }
+.welcome-btn-icon { font-size: 36px; color: #0f3460; }
+.welcome-btn:hover .welcome-btn-icon { color: #e94560; }
+.welcome-btn-label { font-size: 14px; font-weight: 600; }
+.welcome-btn-hint { font-size: 11px; color: #667788; }
+
+/* Upload overlay (for adding zones) */
 #upload-overlay {
     position: absolute; inset: 0; top: 48px; display: flex; align-items: center;
-    justify-content: center; z-index: 999; background: rgba(26,26,46,0.95);
+    justify-content: center; z-index: 998; background: rgba(26,26,46,0.95);
 }
 #upload-overlay.hidden { display: none; }
 .upload-area {
@@ -145,9 +197,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .legend-bar { height: 14px; border-radius: 3px; background: linear-gradient(to right, #d32f2f, #f57c00, #fbc02d, #4caf50, #1b5e20); }
 .legend-labels { display: flex; justify-content: space-between; font-size: 10px; color: #8899aa; margin-top: 2px; }
 
-/* Radio group (horizontal) */
-.radio-row { display: flex; gap: 8px; margin-bottom: 8px; }
-.radio-row label { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #aabbcc; cursor: pointer; margin-bottom: 0; }
+/* Context menu */
+.ctx-menu {
+    position: fixed; background: #16213e; border: 1px solid #0f3460; border-radius: 6px;
+    padding: 4px 0; z-index: 9999; min-width: 120px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+.ctx-menu-item {
+    padding: 6px 16px; font-size: 12px; color: #aabbcc; cursor: pointer; transition: background 0.1s;
+}
+.ctx-menu-item:hover { background: rgba(233,69,96,0.15); color: #e0e0e0; }
+.ctx-menu-item.danger { color: #ef5350; }
+.ctx-menu-item.danger:hover { background: rgba(211,47,47,0.2); }
+
+/* Loading overlay */
+.loading-overlay {
+    position: absolute; inset: 0; top: 48px; display: flex; align-items: center;
+    justify-content: center; z-index: 1000; background: rgba(26,26,46,0.95);
+    font-size: 16px; color: #aabbcc;
+}
+.loading-overlay.hidden { display: none; }
 </style>
 </head>
 <body>
@@ -156,10 +224,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <span class="tb-title">WiFi Planner</span>
     <input type="text" id="project-name" value="New Project" spellcheck="false">
     <div class="tb-sep"></div>
-    <button class="tb-tool active" data-mode="select">Select</button>
-    <button class="tb-tool" data-mode="scale">Scale</button>
-    <button class="tb-tool" data-mode="wall">Wall</button>
-    <button class="tb-tool" data-mode="ap">AP</button>
+    <button class="tb-tool active" data-mode="select" title="Select (1)">Select</button>
+    <button class="tb-tool" data-mode="scale" title="Scale (2)">Scale</button>
+    <button class="tb-tool" data-mode="wall" title="Wall (3)">Wall</button>
+    <button class="tb-tool" data-mode="ap" title="AP (4)">AP</button>
+    <div class="tb-sep"></div>
     <div class="tb-right">
         <select id="band-select">
             <option value="5g">5 GHz</option>
@@ -167,22 +236,59 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <option value="both">Both (best)</option>
         </select>
         <label class="tb-toggle"><input type="checkbox" id="toggle-heatmap"> Heatmap</label>
+        <label class="tb-toggle" id="opacity-group" style="display:none">
+            <input type="range" id="heatmap-opacity" min="10" max="90" value="55">
+        </label>
+        <div class="tb-sep"></div>
+        <button class="tb-btn" id="btn-save" title="Save project (.wfplan)">Save</button>
+        <button class="tb-btn" id="btn-load" title="Load project (.wfplan)">Load</button>
         <button class="tb-btn-export" id="btn-export" disabled>Export .netspp</button>
     </div>
 </div>
+
+<div id="zone-tabs"></div>
 
 <div id="main">
     <div id="sidebar"></div>
     <div id="map"></div>
 </div>
 
-<div id="upload-overlay">
+<!-- Welcome screen -->
+<div id="welcome-overlay">
+    <div class="welcome-box">
+        <div class="welcome-title">WiFi Planner Editor</div>
+        <div class="welcome-sub">Design WiFi networks with predictive signal coverage</div>
+        <div class="welcome-actions">
+            <div class="welcome-btn" id="btn-new-project">
+                <div class="welcome-btn-icon">+</div>
+                <div class="welcome-btn-label">New Project</div>
+                <div class="welcome-btn-hint">Upload a floor plan image</div>
+            </div>
+            <div class="welcome-btn" id="btn-import-netspp">
+                <div class="welcome-btn-icon">&#8681;</div>
+                <div class="welcome-btn-label">Import .netspp</div>
+                <div class="welcome-btn-hint">Open existing NetSpot project</div>
+            </div>
+        </div>
+        <input type="file" id="welcome-file-input" accept="image/*" style="display:none">
+        <input type="file" id="welcome-netspp-input" accept=".netspp" style="display:none">
+    </div>
+</div>
+
+<!-- Upload overlay (for adding zones) -->
+<div id="upload-overlay" class="hidden">
     <div class="upload-area" id="upload-area">
         <div class="upload-icon">+</div>
         <div>Drop floor plan image here</div>
-        <div style="margin-top:8px">or <label for="file-input" class="upload-link">browse files</label></div>
-        <input type="file" id="file-input" accept="image/*" style="display:none">
+        <div style="margin-top:8px">or <label for="zone-file-input" class="upload-link">browse files</label></div>
+        <div style="margin-top:12px;font-size:12px;color:#667788">Press ESC to cancel</div>
+        <input type="file" id="zone-file-input" accept="image/*" style="display:none">
     </div>
+</div>
+
+<!-- Loading overlay -->
+<div id="loading-overlay" class="loading-overlay hidden">
+    <div id="loading-text">Loading...</div>
 </div>
 
 <div id="statusbar">
@@ -229,7 +335,7 @@ const AP_COLORS = ['#4fc3f7', '#81c784', '#ffb74d', '#f06292', '#ba68c8', '#4db6
 // ── Project State ────────────────────────────────────────────────────────
 
 const project = { name: 'New Project', zones: [] };
-let currentZoneIdx = 0;
+let currentZoneIdx = -1;
 let IMG_W = 0, IMG_H = 0;
 
 // Editor state
@@ -238,7 +344,7 @@ let selectedItem = null; // { type: 'wall'|'ap', idx }
 let nextWallId = 1, nextApId = 1;
 
 // Scale calibration
-let scaleState = { point1: null, point2: null, markers: [], line: null };
+let scaleState = { point1: null, point2: null, markers: [], line: null, pixelDist: null };
 
 // Wall drawing
 let wallState = { startPoint: null, startMarker: null, tempLine: null };
@@ -275,14 +381,42 @@ function matById(id) { return MATERIALS.find(m => m.id === id) || MATERIALS[0]; 
 function toPixel(latlng) { return [latlng.lng, IMG_H - latlng.lat]; }
 function toLatLng(px, py) { return [IMG_H - py, px]; }
 
-// ── Image Upload ─────────────────────────────────────────────────────────
+// ── Welcome Screen ───────────────────────────────────────────────────────
 
+const welcomeOverlay = document.getElementById('welcome-overlay');
 const uploadOverlay = document.getElementById('upload-overlay');
 const uploadArea = document.getElementById('upload-area');
-const fileInput = document.getElementById('file-input');
+const loadingOverlay = document.getElementById('loading-overlay');
+const loadingText = document.getElementById('loading-text');
 
-uploadArea.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', (e) => { if (e.target.files[0]) handleImage(e.target.files[0]); });
+// New project button
+document.getElementById('btn-new-project').addEventListener('click', () => {
+    document.getElementById('welcome-file-input').click();
+});
+document.getElementById('welcome-file-input').addEventListener('change', (e) => {
+    if (e.target.files[0]) {
+        welcomeOverlay.classList.add('hidden');
+        handleImage(e.target.files[0]);
+    }
+});
+
+// Import .netspp button
+document.getElementById('btn-import-netspp').addEventListener('click', () => {
+    document.getElementById('welcome-netspp-input').click();
+});
+document.getElementById('welcome-netspp-input').addEventListener('change', (e) => {
+    if (e.target.files[0]) importNetsppFile(e.target.files[0]);
+});
+
+// ── Zone file upload (add zone) ──────────────────────────────────────────
+
+const zoneFileInput = document.getElementById('zone-file-input');
+
+uploadArea.addEventListener('click', () => zoneFileInput.click());
+zoneFileInput.addEventListener('change', (e) => {
+    if (e.target.files[0]) handleImage(e.target.files[0]);
+    zoneFileInput.value = '';
+});
 
 uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
 uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
@@ -309,26 +443,120 @@ function handleImage(file) {
                 walls: [],
                 aps: [],
             };
-            // Also store binary for export
+            // Store binary for export
             const r2 = new FileReader();
             r2.onload = (e2) => { z.imageBlob = e2.target.result; };
             r2.readAsArrayBuffer(file);
 
             project.zones.push(z);
             currentZoneIdx = project.zones.length - 1;
-            setupMapForZone();
             uploadOverlay.classList.add('hidden');
+            welcomeOverlay.classList.add('hidden');
+            setupMapForZone();
             document.getElementById('btn-export').disabled = false;
             setMode('scale');
-            document.getElementById('status-hint').textContent = 'Calibrate the scale: click two reference points';
+            setHint('Calibrate the scale: click two reference points on a known distance');
+            renderZoneTabs();
         };
         img.src = e.target.result;
     };
     reader.readAsDataURL(file);
 }
 
+// ── Zone Management ──────────────────────────────────────────────────────
+
+function renderZoneTabs() {
+    const container = document.getElementById('zone-tabs');
+    container.innerHTML = '';
+    project.zones.forEach((z, idx) => {
+        const tab = document.createElement('button');
+        tab.className = 'zone-tab' + (idx === currentZoneIdx ? ' active' : '');
+        tab.textContent = z.name;
+        tab.addEventListener('click', () => switchToZone(idx));
+        tab.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showZoneContextMenu(e, idx);
+        });
+        container.appendChild(tab);
+    });
+    // Add zone button
+    const addBtn = document.createElement('button');
+    addBtn.className = 'zone-tab-add';
+    addBtn.textContent = '+';
+    addBtn.title = 'Add zone';
+    addBtn.addEventListener('click', () => {
+        uploadOverlay.classList.remove('hidden');
+    });
+    container.appendChild(addBtn);
+}
+
+function switchToZone(idx) {
+    if (idx < 0 || idx >= project.zones.length) return;
+    cancelWallDraw();
+    selectedItem = null;
+    currentZoneIdx = idx;
+    setupMapForZone();
+    renderZoneTabs();
+    setMode('select');
+}
+
+function showZoneContextMenu(e, idx) {
+    removeContextMenu();
+    const menu = document.createElement('div');
+    menu.className = 'ctx-menu';
+    menu.id = 'ctx-menu';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+
+    const rename = document.createElement('div');
+    rename.className = 'ctx-menu-item';
+    rename.textContent = 'Rename';
+    rename.addEventListener('click', () => {
+        removeContextMenu();
+        const name = prompt('Zone name:', project.zones[idx].name);
+        if (name !== null && name.trim()) {
+            project.zones[idx].name = name.trim();
+            renderZoneTabs();
+            updateSidebar();
+        }
+    });
+    menu.appendChild(rename);
+
+    if (project.zones.length > 1) {
+        const del = document.createElement('div');
+        del.className = 'ctx-menu-item danger';
+        del.textContent = 'Delete zone';
+        del.addEventListener('click', () => {
+            removeContextMenu();
+            if (confirm('Delete zone "' + project.zones[idx].name + '"?')) {
+                project.zones.splice(idx, 1);
+                if (currentZoneIdx >= project.zones.length) currentZoneIdx = project.zones.length - 1;
+                if (project.zones.length === 0) {
+                    currentZoneIdx = -1;
+                    welcomeOverlay.classList.remove('hidden');
+                } else {
+                    setupMapForZone();
+                }
+                renderZoneTabs();
+            }
+        });
+        menu.appendChild(del);
+    }
+
+    document.body.appendChild(menu);
+    setTimeout(() => document.addEventListener('click', removeContextMenu, { once: true }), 10);
+}
+
+function removeContextMenu() {
+    const m = document.getElementById('ctx-menu');
+    if (m) m.remove();
+}
+
+// ── Map Setup ────────────────────────────────────────────────────────────
+
 function setupMapForZone() {
     const z = zone();
+    if (!z) return;
     IMG_W = z.imageWidth;
     IMG_H = z.imageHeight;
     if (imageOverlay) map.removeLayer(imageOverlay);
@@ -340,6 +568,7 @@ function setupMapForZone() {
     rebuildAPs();
     if (heatmapLayer) heatmapLayer._update();
     updateSidebar();
+    checkAutoHeatmap();
 }
 
 // ── Mode Switching ───────────────────────────────────────────────────────
@@ -354,31 +583,39 @@ function setMode(mode) {
     toolButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
     document.getElementById('status-mode').textContent = mode.toUpperCase();
 
-    // Cancel in-progress operations
     cancelWallDraw();
-    if (mode !== 'scale') {} // keep scale markers
 
     if (mode === 'select') {
-        document.getElementById('status-hint').textContent = 'Click walls or APs to select. Drag APs to move.';
+        setHint('Click walls or APs to select. Drag APs to move.');
         map.getContainer().style.cursor = 'default';
     } else if (mode === 'scale') {
-        document.getElementById('status-hint').textContent = 'Click two reference points on the map';
+        setHint('Click two reference points on a known distance');
         map.getContainer().style.cursor = 'crosshair';
     } else if (mode === 'wall') {
         selectedItem = null;
-        document.getElementById('status-hint').textContent = 'Click to start drawing walls. Double-click or ESC to finish.';
+        setHint('Click to start drawing walls. Double-click or ESC to finish.');
         map.getContainer().style.cursor = 'crosshair';
     } else if (mode === 'ap') {
         selectedItem = null;
-        document.getElementById('status-hint').textContent = 'Click on the map to place an access point';
+        setHint('Click on the map to place an access point');
         map.getContainer().style.cursor = 'crosshair';
     }
     updateSidebar();
 }
 
+function setHint(text) {
+    document.getElementById('status-hint').textContent = text;
+}
+
+// ── Keyboard Shortcuts ───────────────────────────────────────────────────
+
 document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
     if (e.key === 'Escape') {
+        if (!uploadOverlay.classList.contains('hidden')) {
+            uploadOverlay.classList.add('hidden');
+            return;
+        }
         cancelWallDraw();
         selectedItem = null;
         setMode('select');
@@ -386,6 +623,10 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedItem) deleteSelected();
     }
+    if (e.key === '1') setMode('select');
+    if (e.key === '2') setMode('scale');
+    if (e.key === '3') setMode('wall');
+    if (e.key === '4') setMode('ap');
 });
 
 // ── Map Click Handler ────────────────────────────────────────────────────
@@ -439,7 +680,7 @@ function handleScaleClick(latlng) {
             icon: L.divIcon({ className: 'scale-marker', iconSize: [12, 12] })
         }).addTo(scaleLayer);
         scaleState.markers.push(m);
-        document.getElementById('status-hint').textContent = 'Click second reference point';
+        setHint('Click second reference point');
     } else if (!scaleState.point2) {
         scaleState.point2 = latlng;
         const m = L.marker(latlng, {
@@ -453,7 +694,7 @@ function handleScaleClick(latlng) {
         const dx = scaleState.point1.lng - scaleState.point2.lng;
         const dy = scaleState.point1.lat - scaleState.point2.lat;
         scaleState.pixelDist = Math.sqrt(dx*dx + dy*dy);
-        document.getElementById('status-hint').textContent = 'Enter the real-world distance in the sidebar';
+        setHint('Enter the real-world distance in the sidebar');
         updateSidebar();
     }
 }
@@ -463,9 +704,10 @@ function applyScale() {
     const dist = parseFloat(input.value);
     if (!dist || dist <= 0 || !scaleState.pixelDist) return;
     zone().scale = scaleState.pixelDist / dist;
-    document.getElementById('status-hint').textContent = `Scale set: ${zone().scale.toFixed(2)} px/m`;
+    setHint('Scale set: ' + zone().scale.toFixed(2) + ' px/m. Now draw walls or place APs.');
     updateSidebar();
     if (heatmapLayer) heatmapLayer._update();
+    checkAutoHeatmap();
 }
 
 function clearScaleState() {
@@ -476,7 +718,7 @@ function clearScaleState() {
 function resetScale() {
     clearScaleState();
     if (zone()) zone().scale = null;
-    document.getElementById('status-hint').textContent = 'Click two reference points on the map';
+    setHint('Click two reference points on a known distance');
     updateSidebar();
 }
 
@@ -489,7 +731,6 @@ function handleWallClick(latlng) {
             radius: 5, fillColor: '#e94560', fillOpacity: 1, color: '#fff', weight: 1
         }).addTo(map);
     } else {
-        // Create wall segment
         const [px1, py1] = toPixel(wallState.startPoint);
         const [px2, py2] = toPixel(latlng);
         const matSel = document.getElementById('wall-material');
@@ -507,7 +748,6 @@ function handleWallClick(latlng) {
             color: mat.color,
         });
 
-        // Remove temp markers, continue chain from endpoint
         if (wallState.startMarker) { map.removeLayer(wallState.startMarker); wallState.startMarker = null; }
         if (wallState.tempLine) { map.removeLayer(wallState.tempLine); wallState.tempLine = null; }
 
@@ -570,6 +810,7 @@ function handleAPClick(latlng) {
     updateSidebar();
     updateAPHighlights();
     if (heatmapLayer) heatmapLayer._update();
+    checkAutoHeatmap();
 }
 
 function rebuildAPs() {
@@ -607,10 +848,7 @@ function rebuildAPs() {
     });
 }
 
-function updateAPHighlights() {
-    // Rebuild to update selected state visuals
-    rebuildAPs();
-}
+function updateAPHighlights() { rebuildAPs(); }
 
 // ── Delete selected ──────────────────────────────────────────────────────
 
@@ -647,6 +885,10 @@ function segmentsIntersect(ax,ay,bx,by,cx,cy,dx,dy) {
     const t = ((cx-ax)*(dy-cy) - (cy-ay)*(dx-cx)) / det;
     const u = ((cx-ax)*(by-ay) - (cy-ay)*(bx-ax)) / det;
     return t > 0 && t < 1 && u > 0 && u < 1;
+}
+
+function getHeatmapOpacity() {
+    return parseInt(document.getElementById('heatmap-opacity').value) / 100;
 }
 
 const HeatmapLayer = L.Layer.extend({
@@ -709,9 +951,9 @@ const HeatmapLayer = L.Layer.extend({
             return { sx: sp.x, sy: sp.y, px: a.px, py: a.py, power: a.power, freqLoss: a.freqLoss };
         });
 
+        const opacity = getHeatmapOpacity();
         const imgData = ctx.createImageData(W, H);
         const data = imgData.data;
-        const opacity = 0.55;
 
         for (let py = minY; py < maxY; py += step) {
             for (let px = minX; px < maxX; px += step) {
@@ -731,7 +973,7 @@ const HeatmapLayer = L.Layer.extend({
                     if (sig > best) best = sig;
                 }
                 const [r, g, b] = rssiToRGB(best);
-                const alpha = Math.round(opacity * 220);
+                const alpha = Math.round(opacity * 255);
                 for (let dy2 = 0; dy2 < step && py+dy2 < maxY; dy2++) {
                     for (let dx2 = 0; dx2 < step && px+dx2 < maxX; dx2++) {
                         const idx = ((py+dy2)*W + (px+dx2)) * 4;
@@ -744,14 +986,38 @@ const HeatmapLayer = L.Layer.extend({
     },
 });
 
-document.getElementById('toggle-heatmap').addEventListener('change', function() {
-    if (this.checked) {
+function enableHeatmap() {
+    if (!heatmapLayer) {
         heatmapLayer = new HeatmapLayer();
         heatmapLayer.addTo(map);
-    } else if (heatmapLayer) {
+        document.getElementById('toggle-heatmap').checked = true;
+        document.getElementById('opacity-group').style.display = '';
+    }
+}
+
+function disableHeatmap() {
+    if (heatmapLayer) {
         map.removeLayer(heatmapLayer);
         heatmapLayer = null;
     }
+    document.getElementById('toggle-heatmap').checked = false;
+    document.getElementById('opacity-group').style.display = 'none';
+}
+
+function checkAutoHeatmap() {
+    // Auto-enable heatmap when first AP is placed and scale is set
+    if (!heatmapLayer && zone() && zone().scale && zone().aps.length > 0) {
+        enableHeatmap();
+    }
+}
+
+document.getElementById('toggle-heatmap').addEventListener('change', function() {
+    if (this.checked) enableHeatmap();
+    else disableHeatmap();
+});
+
+document.getElementById('heatmap-opacity').addEventListener('input', () => {
+    if (heatmapLayer) heatmapLayer._update();
 });
 
 document.getElementById('band-select').addEventListener('change', () => {
@@ -778,24 +1044,18 @@ function updateSidebar() {
         const wm = IMG_W / zone().scale, hm = IMG_H / zone().scale;
         html += '<div class="value-row"><span class="lbl">Size</span><span class="val">' + wm.toFixed(1) + ' x ' + hm.toFixed(1) + ' m</span></div>';
     } else {
-        html += '<div class="hint" style="color:#f57c00">Scale not set. Use the Scale tool to calibrate.</div>';
+        html += '<div class="hint" style="color:#f57c00">Scale not set. Use the Scale tool (2) to calibrate.</div>';
     }
     html += '<div class="value-row"><span class="lbl">Image</span><span class="val">' + IMG_W + ' x ' + IMG_H + ' px</span></div>';
     html += '</div>';
 
     // Mode-specific panel
-    if (currentMode === 'scale') {
-        html += renderScalePanel();
-    } else if (currentMode === 'wall') {
-        html += renderWallToolPanel();
-    } else if (currentMode === 'ap') {
-        html += renderAPToolPanel();
-    }
+    if (currentMode === 'scale') html += renderScalePanel();
+    else if (currentMode === 'wall') html += renderWallToolPanel();
+    else if (currentMode === 'ap') html += renderAPToolPanel();
 
     // Selected item properties
-    if (selectedItem) {
-        html += renderSelectedPanel();
-    }
+    if (selectedItem) html += renderSelectedPanel();
 
     // Legend
     if (document.getElementById('toggle-heatmap').checked && zone().scale) {
@@ -806,8 +1066,8 @@ function updateSidebar() {
     }
 
     // Item lists
-    html += renderWallList();
     html += renderAPList();
+    html += renderWallList();
 
     sb.innerHTML = html;
     attachSidebarEvents();
@@ -815,7 +1075,10 @@ function updateSidebar() {
 
 function renderScalePanel() {
     let h = '<div class="panel"><div class="panel-title">Scale Calibration</div>';
-    if (!scaleState.point1) {
+    if (zone().scale && !scaleState.point1) {
+        h += '<div class="hint">Scale is already set. Click "Recalibrate" to set a new scale.</div>';
+        h += '<div class="btn-row"><button class="btn-sm" id="btn-reset-scale">Recalibrate</button></div>';
+    } else if (!scaleState.point1) {
         h += '<div class="hint">Step 1: Click first reference point on the map</div>';
     } else if (!scaleState.point2) {
         h += '<div class="hint">Step 2: Click second reference point</div>';
@@ -850,13 +1113,11 @@ function renderAPToolPanel() {
     });
     h += '</select>';
     h += '<label>Height (m)</label><input type="number" id="ap-height" value="' + apDefaults.height + '" min="0.5" max="20" step="0.5">';
-
     h += '<div class="panel-title" style="margin-top:10px">2.4 GHz Radio</div>';
     h += '<label>Channel</label><select id="ap-ch2g">';
     CHANNELS_2G.forEach(c => { h += '<option value="' + c + '"' + (c === apDefaults.radios['2g'].channel ? ' selected' : '') + '>' + c + '</option>'; });
     h += '</select>';
     h += '<label>TX Power (dBm)</label><input type="number" id="ap-pow2g" value="' + apDefaults.radios['2g'].power + '" min="1" max="30">';
-
     h += '<div class="panel-title" style="margin-top:10px">5 GHz Radio</div>';
     h += '<label>Channel</label><select id="ap-ch5g">';
     CHANNELS_5G.forEach(c => { h += '<option value="' + c + '"' + (c === apDefaults.radios['5g'].channel ? ' selected' : '') + '>' + c + '</option>'; });
@@ -903,7 +1164,6 @@ function renderSelectedPanel() {
         CHANNELS_2G.forEach(c => { h += '<option value="' + c + '"' + (c === ap.radios['2g'].channel ? ' selected' : '') + '>' + c + '</option>'; });
         h += '</select>';
         h += '<label>TX Power (dBm)</label><input type="number" id="sel-pow2g" value="' + ap.radios['2g'].power + '" min="1" max="30">';
-
         h += '<div class="panel-title" style="margin-top:10px">5 GHz Radio</div>';
         h += '<label>Channel</label><select id="sel-ch5g">';
         CHANNELS_5G.forEach(c => { h += '<option value="' + c + '"' + (c === ap.radios['5g'].channel ? ' selected' : '') + '>' + c + '</option>'; });
@@ -957,7 +1217,10 @@ function renderAPList() {
 function attachSidebarEvents() {
     // Zone name
     const zn = document.getElementById('zone-name');
-    if (zn) zn.addEventListener('change', () => { zone().name = zn.value; });
+    if (zn) zn.addEventListener('change', () => {
+        zone().name = zn.value;
+        renderZoneTabs();
+    });
 
     // Project name
     document.getElementById('project-name').addEventListener('change', function() { project.name = this.value; });
@@ -968,7 +1231,7 @@ function attachSidebarEvents() {
     const btnReset = document.getElementById('btn-reset-scale');
     if (btnReset) btnReset.addEventListener('click', resetScale);
 
-    // Wall tool material change → update absorption default
+    // Wall tool material change
     const wallMat = document.getElementById('wall-material');
     if (wallMat) wallMat.addEventListener('change', () => {
         const mat = matById(parseInt(wallMat.value));
@@ -1052,7 +1315,6 @@ function attachSidebarEvents() {
             setMode('select');
             updateSidebar();
             updateAPHighlights();
-            // Pan to item
             if (selectedItem.type === 'ap') {
                 const ap = zone().aps[selectedItem.idx];
                 if (ap) map.setView(toLatLng(ap.px, ap.py), map.getZoom());
@@ -1076,6 +1338,299 @@ function attachSidebarEvents() {
     });
 }
 
+// ── Save / Load Project (.wfplan) ────────────────────────────────────────
+
+document.getElementById('btn-save').addEventListener('click', saveProject);
+document.getElementById('btn-load').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.wfplan';
+    input.addEventListener('change', (e) => {
+        if (e.target.files[0]) loadProject(e.target.files[0]);
+    });
+    input.click();
+});
+
+function saveProject() {
+    const data = {
+        version: 1,
+        name: project.name,
+        zones: project.zones.map(z => ({
+            name: z.name,
+            scale: z.scale,
+            imageFileName: z.imageFileName,
+            imageDataUrl: z.imageDataUrl,
+            imageWidth: z.imageWidth,
+            imageHeight: z.imageHeight,
+            walls: z.walls,
+            aps: z.aps,
+        })),
+    };
+    const json = JSON.stringify(data);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = project.name.replace(/[^a-zA-Z0-9_\- ]/g, '_') + '.wfplan';
+    a.click();
+    URL.revokeObjectURL(url);
+    setHint('Project saved as .wfplan');
+}
+
+function loadProject(file) {
+    showLoading('Loading project...');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = JSON.parse(e.target.result);
+            project.name = data.name || 'Loaded Project';
+            document.getElementById('project-name').value = project.name;
+            project.zones = [];
+            currentZoneIdx = -1;
+
+            let loaded = 0;
+            if (!data.zones || data.zones.length === 0) {
+                hideLoading();
+                welcomeOverlay.classList.remove('hidden');
+                return;
+            }
+
+            data.zones.forEach((zd) => {
+                const z = {
+                    name: zd.name,
+                    scale: zd.scale,
+                    imageDataUrl: zd.imageDataUrl,
+                    imageBlob: null,
+                    imageFileName: zd.imageFileName,
+                    imageWidth: zd.imageWidth,
+                    imageHeight: zd.imageHeight,
+                    walls: zd.walls || [],
+                    aps: zd.aps || [],
+                };
+                // Convert data URL to ArrayBuffer for export
+                if (z.imageDataUrl) {
+                    fetch(z.imageDataUrl).then(r => r.arrayBuffer()).then(buf => { z.imageBlob = buf; });
+                }
+                project.zones.push(z);
+
+                // Track max IDs
+                z.walls.forEach(w => { if (w.id >= nextWallId) nextWallId = w.id + 1; });
+                z.aps.forEach(ap => { if (ap.id >= nextApId) nextApId = ap.id + 1; });
+            });
+
+            currentZoneIdx = 0;
+            welcomeOverlay.classList.add('hidden');
+            setupMapForZone();
+            renderZoneTabs();
+            document.getElementById('btn-export').disabled = false;
+            setMode('select');
+            setHint('Project loaded: ' + project.zones.length + ' zone(s)');
+            hideLoading();
+        } catch (err) {
+            hideLoading();
+            alert('Failed to load project: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+}
+
+// ── Import .netspp in browser ────────────────────────────────────────────
+
+async function importNetsppFile(file) {
+    showLoading('Importing .netspp...');
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const zip = await JSZip.loadAsync(arrayBuffer);
+
+        // Load sql.js
+        const SQL = await loadSqlJs();
+
+        // Get database
+        const dbFile = zip.file('database.db3');
+        if (!dbFile) throw new Error('database.db3 not found in archive');
+        const dbBuf = await dbFile.async('arraybuffer');
+        const db = new SQL.Database(new Uint8Array(dbBuf));
+
+        // Read project info
+        const projRows = db.exec("SELECT Name, TimeCreated, TimeModified FROM PredictiveData LIMIT 1");
+        if (projRows.length > 0 && projRows[0].values.length > 0) {
+            const r = projRows[0].values[0];
+            project.name = r[0] || file.name.replace(/\.[^.]+$/, '');
+        } else {
+            project.name = file.name.replace(/\.[^.]+$/, '');
+        }
+        document.getElementById('project-name').value = project.name;
+
+        // Read zones and maps
+        const zoneRows = db.exec(`
+            SELECT z._id, z.Name, z.Scale, m.PngName
+            FROM Zones z JOIN Maps m ON m._id = z.MapId
+            ORDER BY z._id
+        `);
+        if (!zoneRows.length || !zoneRows[0].values.length) throw new Error('No zones found');
+
+        // Read snapshots
+        const snapRows = db.exec("SELECT _id, ZoneId FROM Snapshots ORDER BY _id");
+        const snapMap = {};
+        if (snapRows.length > 0) {
+            snapRows[0].values.forEach(r => {
+                if (!snapMap[r[1]]) snapMap[r[1]] = r[0]; // first snapshot per zone
+            });
+        }
+
+        project.zones = [];
+        currentZoneIdx = -1;
+
+        for (const row of zoneRows[0].values) {
+            const zoneId = row[0];
+            const zoneName = row[1];
+            const scale = row[2];
+            const pngName = row[3];
+            const coordScale = scale * 100;
+
+            // Load floor plan image from ZIP
+            const mapFile = zip.file('Maps/' + pngName);
+            let imageDataUrl = '';
+            let imageBlob = null;
+            let imgW = 1000, imgH = 1000;
+            if (mapFile) {
+                const imgBuf = await mapFile.async('arraybuffer');
+                imageBlob = imgBuf;
+                const imgBytes = new Uint8Array(imgBuf);
+                // Detect type
+                let mimeType = 'image/png';
+                if (imgBytes[0] === 0xFF && imgBytes[1] === 0xD8) mimeType = 'image/jpeg';
+                const b64 = arrayBufferToBase64(imgBuf);
+                imageDataUrl = 'data:' + mimeType + ';base64,' + b64;
+
+                // Get image dimensions
+                const dims = await getImageDimensions(imageDataUrl);
+                imgW = dims.width;
+                imgH = dims.height;
+            }
+
+            // Read APs (routers) for first snapshot of this zone
+            const aps = [];
+            const snapId = snapMap[zoneId];
+            if (snapId !== undefined) {
+                const routerRows = db.exec(`
+                    SELECT Alias, x, y, Channel, TransmitPower, ChannelWidth, Model, Height, WiFiBand
+                    FROM Routers WHERE SnapId = ${snapId} ORDER BY Alias, WiFiBand
+                `);
+                if (routerRows.length > 0) {
+                    const grouped = {};
+                    routerRows[0].values.forEach(r => {
+                        const alias = r[0];
+                        if (!grouped[alias]) grouped[alias] = [];
+                        grouped[alias].push({
+                            alias: r[0], x: r[1], y: r[2], channel: r[3],
+                            power: r[4], width: r[5], model: r[6], height: r[7], band: r[8]
+                        });
+                    });
+                    for (const [alias, radios] of Object.entries(grouped)) {
+                        const first = radios[0];
+                        const radioData = {};
+                        radios.forEach(r => {
+                            const key = r.band === 0 ? '2g' : '5g';
+                            radioData[key] = { channel: r.channel, power: r.power, width: r.width || 'MHZ_80' };
+                        });
+                        aps.push({
+                            id: nextApId++,
+                            alias: alias,
+                            px: Math.round(first.x * coordScale * 10) / 10,
+                            py: Math.round(first.y * coordScale * 10) / 10,
+                            model: first.model || 100,
+                            height: first.height || 3.0,
+                            radios: radioData,
+                        });
+                    }
+                }
+            }
+
+            // Read walls for this zone
+            const walls = [];
+            const wallRows = db.exec(`
+                SELECT w.Absorption, w.Material, w.Color,
+                       wp1.X, wp1.Y, wp2.X, wp2.Y
+                FROM Walls w
+                JOIN WallsPoints wp1 ON wp1._id = w.StartPointId
+                JOIN WallsPoints wp2 ON wp2._id = w.EndPointId
+                WHERE w.ZoneId = ${zoneId}
+                ORDER BY w._id
+            `);
+            if (wallRows.length > 0) {
+                wallRows[0].values.forEach(r => {
+                    walls.push({
+                        id: nextWallId++,
+                        start: [Math.round(r[3] * coordScale * 10) / 10, Math.round(r[4] * coordScale * 10) / 10],
+                        end: [Math.round(r[5] * coordScale * 10) / 10, Math.round(r[6] * coordScale * 10) / 10],
+                        absorption: r[0],
+                        material: r[1] || 1,
+                        color: r[2] ? r[2].replace(/^#FF/i, '#') : '#5C5C5C',
+                    });
+                });
+            }
+
+            project.zones.push({
+                name: zoneName,
+                scale: coordScale,
+                imageDataUrl: imageDataUrl,
+                imageBlob: imageBlob,
+                imageFileName: pngName,
+                imageWidth: imgW,
+                imageHeight: imgH,
+                walls: walls,
+                aps: aps,
+            });
+        }
+
+        db.close();
+
+        currentZoneIdx = 0;
+        welcomeOverlay.classList.add('hidden');
+        setupMapForZone();
+        renderZoneTabs();
+        document.getElementById('btn-export').disabled = false;
+        setMode('select');
+        setHint('Imported ' + project.zones.length + ' zone(s) from .netspp');
+        hideLoading();
+
+    } catch (err) {
+        hideLoading();
+        console.error('Import failed:', err);
+        alert('Failed to import .netspp: ' + err.message);
+    }
+}
+
+function arrayBufferToBase64(buffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
+
+function getImageDimensions(dataUrl) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve({ width: img.width, height: img.height });
+        img.onerror = () => resolve({ width: 1000, height: 1000 });
+        img.src = dataUrl;
+    });
+}
+
+// ── Loading overlay ──────────────────────────────────────────────────────
+
+function showLoading(text) {
+    loadingText.textContent = text || 'Loading...';
+    loadingOverlay.classList.remove('hidden');
+}
+
+function hideLoading() {
+    loadingOverlay.classList.add('hidden');
+}
+
 // ── Export .netspp ────────────────────────────────────────────────────────
 
 document.getElementById('btn-export').addEventListener('click', exportNetspp);
@@ -1086,7 +1641,6 @@ async function exportNetspp() {
     btn.textContent = 'Exporting...';
 
     try {
-        // Load sql.js dynamically
         const SQL = await loadSqlJs();
         const db = new SQL.Database();
 
@@ -1130,12 +1684,11 @@ async function exportNetspp() {
 
         const now = new Date().toISOString().replace('T', ' ').split('.')[0];
 
-        // PredictiveData
         db.run(`INSERT INTO PredictiveData (Name, Description, Version, Author, OS, AppVersion, TimeCreated, TimeModified, ProjectGuid)
                 VALUES (?, '', 5, 'WiFi Planner Editor', 'Web', '1.0.0', ?, ?, ?)`,
             [project.name, now, now, crypto.randomUUID()]);
 
-        const zip = new JSZip();
+        const jszip = new JSZip();
         let wallPointId = 1;
 
         for (let zi = 0; zi < project.zones.length; zi++) {
@@ -1145,26 +1698,21 @@ async function exportNetspp() {
             const snapId = zi + 1;
             const dbScale = z.scale ? z.scale / 100 : 0.1;
 
-            // Map
             db.run(`INSERT INTO Maps (_id, OriginalName, PngName, Data) VALUES (?, ?, ?, NULL)`,
                 [mapId, z.imageFileName, z.imageFileName]);
 
-            // Zone
             db.run(`INSERT INTO Zones (_id, Name, MapId, Scale, Description, PredictiveId, ZoneGuid, MapGuid)
                     VALUES (?, ?, ?, ?, '', 1, ?, ?)`,
                 [zoneId, z.name, mapId, dbScale, crypto.randomUUID(), crypto.randomUUID()]);
 
-            // Snapshot
             db.run(`INSERT INTO Snapshots (_id, ZoneId, Name, Description, Merged, Time, TimeModified, SnapshotGuid)
                     VALUES (?, ?, ?, '', 0, ?, ?, ?)`,
                 [snapId, zoneId, '#1 ' + now.split(' ')[0], now, now, crypto.randomUUID()]);
 
-            // Routers (one row per radio band)
             const coordScale = z.scale || 1;
             for (const ap of z.aps) {
                 const xM = ap.px / coordScale;
                 const yM = ap.py / coordScale;
-                // 2.4 GHz radio
                 if (ap.radios['2g']) {
                     const r = ap.radios['2g'];
                     db.run(`INSERT INTO Routers (SnapId, Model, Alias, Description, Channel, Mode, x, y, IsChecked,
@@ -1173,7 +1721,6 @@ async function exportNetspp() {
                             VALUES (?, ?, ?, '', ?, '', ?, ?, 1, 0, 0, 0, '', '', '', ?, ?, ?, ?, 0, 0)`,
                         [snapId, ap.model, ap.alias, r.channel, xM, yM, r.power, r.width, r.channel, ap.height]);
                 }
-                // 5 GHz radio
                 if (ap.radios['5g']) {
                     const r = ap.radios['5g'];
                     db.run(`INSERT INTO Routers (SnapId, Model, Alias, Description, Channel, Mode, x, y, IsChecked,
@@ -1184,7 +1731,6 @@ async function exportNetspp() {
                 }
             }
 
-            // Walls + WallsPoints
             for (const w of z.walls) {
                 const x1m = w.start[0] / coordScale, y1m = w.start[1] / coordScale;
                 const x2m = w.end[0] / coordScale, y2m = w.end[1] / coordScale;
@@ -1199,29 +1745,27 @@ async function exportNetspp() {
                     [zoneId, w.material, sp, ep, w.absorption, colorStr]);
             }
 
-            // Add image to ZIP
             if (z.imageBlob) {
-                zip.file('Maps/' + z.imageFileName, z.imageBlob);
+                jszip.file('Maps/' + z.imageFileName, z.imageBlob);
             }
         }
 
-        // Export DB and add to ZIP
         const dbData = db.export();
         db.close();
-        zip.file('database.db3', dbData);
+        jszip.file('database.db3', dbData);
 
-        // Generate and download
-        const blob = await zip.generateAsync({ type: 'blob' });
+        const blob = await jszip.generateAsync({ type: 'blob' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = project.name.replace(/[^a-zA-Z0-9_-]/g, '_') + '.netspp';
         a.click();
         URL.revokeObjectURL(url);
+        setHint('Exported .netspp successfully');
 
     } catch (err) {
         console.error('Export failed:', err);
-        document.getElementById('status-hint').textContent = 'Export failed: ' + err.message;
+        setHint('Export failed: ' + err.message);
     }
 
     btn.disabled = false;
@@ -1246,8 +1790,113 @@ function loadSqlJs() {
     });
 }
 
+// ── Preload.js auto-detect ───────────────────────────────────────────────
+
+function tryLoadPreload() {
+    const script = document.createElement('script');
+    script.src = 'preload.js';
+    script.onload = () => {
+        if (typeof PRELOAD !== 'undefined') {
+            loadFromPreload(PRELOAD);
+        }
+    };
+    script.onerror = () => {
+        // No preload.js, show welcome screen
+    };
+    document.head.appendChild(script);
+}
+
+function loadFromPreload(data) {
+    showLoading('Loading imported data...');
+
+    project.name = (data.project && data.project.name) || 'Imported Project';
+    document.getElementById('project-name').value = project.name;
+    project.zones = [];
+    currentZoneIdx = -1;
+
+    if (!data.zones || data.zones.length === 0) {
+        hideLoading();
+        return;
+    }
+
+    let loaded = 0;
+    const total = data.zones.length;
+
+    data.zones.forEach((zd) => {
+        // Map file is served alongside index.html
+        const img = new Image();
+        img.onload = () => {
+            const z = {
+                name: zd.name,
+                scale: zd.scale || null,
+                imageDataUrl: img.src,
+                imageBlob: null,
+                imageFileName: zd.map_file,
+                imageWidth: img.width,
+                imageHeight: img.height,
+                walls: (zd.walls || []).map(w => ({
+                    id: nextWallId++,
+                    start: w.start,
+                    end: w.end,
+                    absorption: w.absorption,
+                    material: w.material || 1,
+                    color: w.color ? w.color.replace(/^#FF/i, '#') : matById(w.material || 1).color,
+                })),
+                aps: (zd.aps || []).map(a => ({
+                    id: nextApId++,
+                    alias: a.alias,
+                    px: a.px,
+                    py: a.py,
+                    model: a.model || 100,
+                    height: a.height || 3.0,
+                    radios: a.radios || { '2g': { channel: 1, power: 20, width: 'MHZ_20' }, '5g': { channel: 36, power: 20, width: 'MHZ_80' } },
+                })),
+            };
+
+            // Fetch image as blob for export
+            fetch(zd.map_file).then(r => r.arrayBuffer()).then(buf => { z.imageBlob = buf; }).catch(() => {});
+            // Also convert displayed image to data URL
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            try { z.imageDataUrl = canvas.toDataURL('image/png'); } catch (e) { /* CORS */ }
+
+            project.zones.push(z);
+            loaded++;
+
+            if (loaded === total) {
+                currentZoneIdx = 0;
+                welcomeOverlay.classList.add('hidden');
+                setupMapForZone();
+                renderZoneTabs();
+                document.getElementById('btn-export').disabled = false;
+                setMode('select');
+                setHint('Loaded ' + total + ' zone(s) from imported project');
+                hideLoading();
+            }
+        };
+        img.onerror = () => {
+            loaded++;
+            if (loaded === total && project.zones.length > 0) {
+                currentZoneIdx = 0;
+                welcomeOverlay.classList.add('hidden');
+                setupMapForZone();
+                renderZoneTabs();
+                document.getElementById('btn-export').disabled = false;
+                hideLoading();
+            } else if (loaded === total) {
+                hideLoading();
+            }
+        };
+        img.src = zd.map_file;
+    });
+}
+
 // ── Initial render ───────────────────────────────────────────────────────
+
 updateSidebar();
+tryLoadPreload();
 
 })();
 </script>
