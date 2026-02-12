@@ -643,6 +643,8 @@ def generate_pdf_report(db_path, zones, output_path, main_ssids, ssid_prefix):
             else: row.append('Weak')
             tbl.append(row)
 
+        rows_per_page = 35
+
         def mk_tbl(data, label):
             f = plt.figure(figsize=(11.69, 8.27)); f.patch.set_facecolor('white')
             f.suptitle(f'Signal Per Point ({label})', fontsize=14, fontweight='bold', y=0.98)
@@ -656,19 +658,18 @@ def generate_pdf_report(db_path, zones, output_path, main_ssids, ssid_prefix):
                 else: rc[-1] = rc[-2] = '#ffcdd2'
                 cc.append(rc)
             tb = a.table(cellText=data, colLabels=hdr, loc='center', cellLoc='center', cellColours=cc)
-            tb.auto_set_font_size(False); tb.set_fontsize(7)
-            tb.scale(1, min(0.85 / max(len(data), 1) * 40, 1.0))
+            tb.auto_set_font_size(False); tb.set_fontsize(9)
+            tb.scale(1, 1.4)
             for j in range(len(hdr)):
                 tb[0, j].set_facecolor('#1a1a2e')
                 tb[0, j].set_text_props(color='white', fontweight='bold')
             f.tight_layout(rect=[0.02, 0.02, 0.98, 0.94])
             return f
 
-        n_all = len(tbl)
-        mid = (n_all + 1) // 2
-        pdf.savefig(mk_tbl(tbl[:mid], f'Pts 1-{mid}'), dpi=150); plt.close()
-        if tbl[mid:]:
-            pdf.savefig(mk_tbl(tbl[mid:], f'Pts {mid+1}-{n_all}'), dpi=150); plt.close()
+        for i in range(0, len(tbl), rows_per_page):
+            chunk = tbl[i:i + rows_per_page]
+            label = f'Pts {i+1}-{i+len(chunk)}'
+            pdf.savefig(mk_tbl(chunk, label), dpi=150); plt.close()
 
     conn.close()
     print(f"  PDF report: {output_path}")
