@@ -53,14 +53,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 /* Map */
 #map { flex: 1; background: #111; }
 
-/* Leaflet popup overrides */
-.leaflet-popup-content-wrapper { background: #16213e; color: #e0e0e0; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
-.leaflet-popup-tip { background: #16213e; }
-.leaflet-popup-content { margin: 10px 14px; font-size: 12px; line-height: 1.6; }
-.popup-title { font-weight: 700; font-size: 13px; color: #e94560; margin-bottom: 4px; }
-.popup-signal { display: flex; justify-content: space-between; padding: 1px 0; }
-.popup-signal .ssid { color: #aabbcc; }
-.popup-signal .rssi { font-weight: 600; font-family: 'Consolas', monospace; }
+/* Loading overlay */
+#loading { position: fixed; inset: 0; background: #1a1a2e; display: flex; align-items: center; justify-content: center; z-index: 9999; font-size: 18px; color: #e94560; }
+
+/* View-dependent legend visibility */
+#legend-signal, #legend-cci { display: none; }
+#legend-signal.active, #legend-cci.active { display: flex; }
+
+/* Signal color classes */
 .signal-excellent { color: #4caf50; }
 .signal-good { color: #8bc34a; }
 .signal-fair { color: #fbc02d; }
@@ -71,22 +71,131 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .cci-moderate { color: #fbc02d; }
 .cci-high { color: #f57c00; }
 .cci-severe { color: #d32f2f; }
-.popup-divider { border: none; border-top: 1px solid #0f3460; margin: 4px 0; }
-.popup-detail { color: #8899aa; font-size: 11px; }
-.popup-section-title { font-weight: 600; font-size: 12px; color: #e94560; margin: 2px 0; }
-.popup-networks { max-height: 200px; overflow-y: auto; }
-.popup-net-row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; font-size: 11px; }
-.popup-net-row .bssid { color: #667788; font-family: 'Consolas', monospace; font-size: 10px; }
-.popup-cci-ch { padding: 3px 0; }
-.popup-cci-ch .ch-header { font-weight: 600; font-size: 11px; }
-.popup-cci-ap { font-size: 10px; color: #8899aa; font-family: 'Consolas', monospace; padding-left: 8px; }
 
-/* Loading overlay */
-#loading { position: fixed; inset: 0; background: #1a1a2e; display: flex; align-items: center; justify-content: center; z-index: 9999; font-size: 18px; color: #e94560; }
+/* ── Detail Panel (right slide-in) ── */
+#detail-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 420px;
+    height: 100vh;
+    background: #16213e;
+    border-left: 2px solid #0f3460;
+    z-index: 2000;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 20px rgba(0,0,0,0.5);
+}
+#detail-panel.open { transform: translateX(0); }
 
-/* View-dependent legend visibility */
-#legend-signal, #legend-cci { display: none; }
-#legend-signal.active, #legend-cci.active { display: flex; }
+.dp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #0f3460;
+    background: #1a1a2e;
+    flex-shrink: 0;
+}
+.dp-header h3 { font-size: 16px; color: #e94560; }
+.dp-header .dp-time { font-size: 12px; color: #8899aa; margin-top: 2px; }
+.dp-close {
+    background: none;
+    border: 1px solid #334;
+    color: #8899aa;
+    font-size: 18px;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.dp-close:hover { background: #e94560; color: #fff; border-color: #e94560; }
+
+.dp-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+}
+
+.dp-section {
+    margin-bottom: 20px;
+}
+.dp-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #e94560;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #0f3460;
+}
+
+/* Signal table */
+.dp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.dp-table th {
+    text-align: left;
+    font-size: 11px;
+    color: #667788;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-bottom: 1px solid #0f3460;
+    text-transform: uppercase;
+}
+.dp-table th.r { text-align: right; }
+.dp-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(15,52,96,0.4);
+}
+.dp-table td.r { text-align: right; font-family: 'Consolas', 'Monaco', monospace; font-weight: 600; }
+.dp-table td.ssid-name { color: #ccdde0; }
+.dp-table td.muted { color: #556677; font-size: 12px; }
+.dp-table tr:hover { background: rgba(233,69,96,0.06); }
+
+/* CCI summary row */
+.dp-cci-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    background: #1a1a2e;
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+.dp-cci-label { font-size: 13px; color: #aabbcc; }
+.dp-cci-val { font-size: 14px; font-weight: 700; font-family: 'Consolas', monospace; }
+
+/* CCI detail card */
+.dp-cci-card {
+    background: #1a1a2e;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+.dp-cci-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+.dp-cci-card-head .ch-info { color: #ccdde0; font-weight: 600; }
+.dp-cci-card-head .sig { font-family: 'Consolas', monospace; font-weight: 600; }
+.dp-cci-card-detail { color: #8899aa; font-size: 11px; padding-left: 4px; margin-top: 2px; }
+.dp-cci-card-detail .intf-line { padding: 1px 0; font-family: 'Consolas', monospace; font-size: 11px; }
+
+/* No data message */
+.dp-empty { color: #556677; font-size: 13px; font-style: italic; padding: 8px 0; }
 </style>
 </head>
 <body>
@@ -176,6 +285,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 <div id="map"></div>
 <div id="loading">Loading survey data...</div>
 
+<!-- Detail panel (slide-in from right) -->
+<div id="detail-panel">
+    <div class="dp-header">
+        <div>
+            <h3 id="dp-title"></h3>
+            <div class="dp-time" id="dp-time"></div>
+        </div>
+        <button class="dp-close" id="dp-close">&times;</button>
+    </div>
+    <div class="dp-body" id="dp-body"></div>
+</div>
+
 <script src="leaflet.js"></script>
 <script src="data.js"></script>
 <script>
@@ -259,10 +380,7 @@ const map = L.map('map', {
 });
 
 function setMapZone() {
-    // Remove old overlay
-    if (imageOverlay) {
-        map.removeLayer(imageOverlay);
-    }
+    if (imageOverlay) map.removeLayer(imageOverlay);
     const bounds = [[0, 0], [IMG_H, IMG_W]];
     imageOverlay = L.imageOverlay(currentZone.map_file, bounds).addTo(map);
     map.fitBounds(bounds);
@@ -277,10 +395,138 @@ function switchZone(idx) {
     IMG_H = currentZone.image.height;
     setMapZone();
     updateStats();
+    closeDetailPanel();
     refresh();
 }
 
-// --- Convex hull utility (Graham scan) ---
+// ── Detail Panel ─────────────────────────────────────────────────────────
+
+const detailPanel = document.getElementById('detail-panel');
+
+function closeDetailPanel() {
+    detailPanel.classList.remove('open');
+}
+
+document.getElementById('dp-close').addEventListener('click', closeDetailPanel);
+
+function openDetailPanel(sp) {
+    document.getElementById('dp-title').textContent = 'Scan Point #' + sp.id;
+    document.getElementById('dp-time').textContent = sp.time;
+
+    let html = '';
+
+    // ── Signal Strength table ──
+    html += `<div class="dp-section">`;
+    html += `<div class="dp-section-title">Signal Strength</div>`;
+    html += `<table class="dp-table">`;
+    html += `<tr><th>SSID</th><th class="r">2.4 GHz</th><th class="r">5 GHz</th><th class="r">Best</th></tr>`;
+
+    // Main SSIDs first
+    DATA.main_ssids.forEach(ssid => {
+        const v2g = sp.signals_2g[ssid];
+        const v5g = sp.signals_5g[ssid];
+        const vAny = sp.signals_any[ssid];
+        if (vAny === undefined) return;
+        const label = SSID_PREFIX ? ssid.replace(SSID_PREFIX, '') : ssid;
+        html += `<tr>`;
+        html += `<td class="ssid-name">${label}</td>`;
+        html += `<td class="r ${v2g !== undefined ? rssiClass(v2g) : 'muted'}">${v2g !== undefined ? Math.round(v2g) : '-'}</td>`;
+        html += `<td class="r ${v5g !== undefined ? rssiClass(v5g) : 'muted'}">${v5g !== undefined ? Math.round(v5g) : '-'}</td>`;
+        html += `<td class="r ${rssiClass(vAny)}">${Math.round(vAny)} dBm</td>`;
+        html += `</tr>`;
+    });
+
+    // Other SSIDs
+    const others = Object.keys(sp.signals_any).filter(k => !DATA.main_ssids.includes(k)).sort((a,b) => sp.signals_any[b] - sp.signals_any[a]);
+    if (others.length) {
+        html += `<tr><td colspan="4" style="padding:8px 0 4px;font-size:11px;color:#667788;border:none">Other networks (${others.length})</td></tr>`;
+        others.forEach(ssid => {
+            const v2g = sp.signals_2g[ssid];
+            const v5g = sp.signals_5g[ssid];
+            const vAny = sp.signals_any[ssid];
+            html += `<tr>`;
+            html += `<td class="ssid-name" style="font-size:12px">${ssid}</td>`;
+            html += `<td class="r ${v2g !== undefined ? rssiClass(v2g) : 'muted'}">${v2g !== undefined ? Math.round(v2g) : '-'}</td>`;
+            html += `<td class="r ${v5g !== undefined ? rssiClass(v5g) : 'muted'}">${v5g !== undefined ? Math.round(v5g) : '-'}</td>`;
+            html += `<td class="r ${rssiClass(vAny)}">${Math.round(vAny)}</td>`;
+            html += `</tr>`;
+        });
+    }
+    html += `</table></div>`;
+
+    // ── Co-Channel Interference ──
+    const cci = sp.interference;
+    if (cci) {
+        html += `<div class="dp-section">`;
+        html += `<div class="dp-section-title">Co-Channel Interference</div>`;
+
+        if (cci.max_cci === 0) {
+            html += `<div class="dp-cci-row"><span class="dp-cci-label">Status</span><span class="dp-cci-val cci-none">No interference</span></div>`;
+        } else {
+            html += `<div class="dp-cci-row"><span class="dp-cci-label">Max competing APs</span><span class="dp-cci-val ${cciClass(cci.max_cci)}">${cci.max_cci}</span></div>`;
+            if (cci.worst_sir !== null) {
+                const sirCls = cci.worst_sir > 10 ? 'cci-none' : cci.worst_sir > 5 ? 'cci-moderate' : 'cci-severe';
+                html += `<div class="dp-cci-row"><span class="dp-cci-label">Worst SIR</span><span class="dp-cci-val ${sirCls}">${cci.worst_sir} dB</span></div>`;
+            }
+
+            // Per-band details
+            [['2.4 GHz', cci.band_2g], ['5 GHz', cci.band_5g]].forEach(([bandName, bd]) => {
+                if (!bd || !bd.overlap_groups || !bd.overlap_groups.length) return;
+
+                const seen = new Set();
+                const groups = bd.overlap_groups.filter(g => {
+                    if (seen.has(g.ap.mac)) return false;
+                    seen.add(g.ap.mac); return true;
+                }).sort((a,b) => b.competing - a.competing);
+
+                groups.forEach(g => {
+                    const ap = g.ap;
+                    const w = ap.width.replace('MHZ_', '');
+                    const sirCls = g.sir > 10 ? 'cci-none' : g.sir > 5 ? 'cci-moderate' : 'cci-severe';
+                    html += `<div class="dp-cci-card">`;
+                    html += `<div class="dp-cci-card-head">`;
+                    html += `<span class="ch-info">${bandName} Ch ${ap.ch} (${w} MHz)</span>`;
+                    html += `<span class="sig ${rssiClass(ap.rssi)}">${ap.rssi} dBm</span>`;
+                    html += `</div>`;
+                    html += `<div class="dp-cci-card-detail">`;
+                    html += `<span class="${cciClass(g.competing)}">${g.competing} interferer${g.competing > 1 ? 's' : ''}</span>`;
+                    html += ` &middot; SIR: <span class="${sirCls}">${g.sir} dB</span>`;
+                    g.interferers.forEach(intf => {
+                        const iw = intf.width.replace('MHZ_', '');
+                        html += `<div class="intf-line">*:${intf.mac} Ch ${intf.ch} (${iw} MHz) ${intf.rssi} dBm</div>`;
+                    });
+                    html += `</div></div>`;
+                });
+            });
+        }
+        html += `</div>`;
+    }
+
+    // ── All Detected APs table ──
+    const nets = sp.networks.slice().sort((a,b) => b.rssi - a.rssi);
+    if (nets.length) {
+        html += `<div class="dp-section">`;
+        html += `<div class="dp-section-title">All Detected APs (${nets.length})</div>`;
+        html += `<table class="dp-table">`;
+        html += `<tr><th>BSSID</th><th>SSID</th><th>Band</th><th>Ch</th><th class="r">dBm</th></tr>`;
+        nets.forEach(n => {
+            html += `<tr>`;
+            html += `<td class="muted" style="font-family:Consolas,monospace;font-size:11px">${n.bssid}</td>`;
+            html += `<td class="ssid-name" style="font-size:12px">${n.ssid}</td>`;
+            html += `<td class="muted">${n.band === '2.4 GHz' ? '2.4G' : '5G'}</td>`;
+            html += `<td class="muted">${n.channel}</td>`;
+            html += `<td class="r ${rssiClass(n.rssi)}">${Math.round(n.rssi)}</td>`;
+            html += `</tr>`;
+        });
+        html += `</table></div>`;
+    }
+
+    document.getElementById('dp-body').innerHTML = html;
+    detailPanel.classList.add('open');
+}
+
+// ── Convex hull utility (Graham scan) ────────────────────────────────────
+
 function convexHull(pts) {
     if (pts.length < 3) return pts.slice();
     const cross = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
@@ -293,7 +539,8 @@ function convexHull(pts) {
     return lower.concat(upper);
 }
 
-// --- IDW color gradient (NetSpot-like) ---
+// ── IDW color gradient (NetSpot-like) ────────────────────────────────────
+
 function rssiToRGB(rssi) {
     const t = Math.max(0, Math.min(1, (rssi + 90) / 40));
     let r, g, b;
@@ -324,7 +571,8 @@ function cciToRGB(cci) {
     return [211, 47, 47];
 }
 
-// --- Heatmap canvas layer (IDW interpolation) ---
+// ── Heatmap canvas layer (IDW interpolation) ────────────────────────────
+
 const HeatmapLayer = L.Layer.extend({
     onAdd(map) {
         this._map = map;
@@ -460,7 +708,8 @@ function pointInPolygon(x, y, poly) {
 const heatmapLayer = new HeatmapLayer();
 heatmapLayer.addTo(map);
 
-// --- Scan point markers ---
+// ── Scan point markers ──────────────────────────────────────────────────
+
 const pointMarkers = L.layerGroup().addTo(map);
 
 function createPointMarkers() {
@@ -478,118 +727,19 @@ function createPointMarkers() {
         }
 
         const marker = L.circleMarker([p.y, p.x], {
-            radius: 6,
+            radius: 7,
             fillColor: color,
             fillOpacity: 0.9,
             color: '#fff',
             weight: 1.5,
             opacity: 0.7,
+            bubblingMouseEvents: false,
         });
 
-        // Build popup content
-        let html = `<div class="popup-title">Scan Point #${sp.id}</div>`;
-        html += `<div class="popup-detail">${sp.time}</div>`;
-        html += `<hr class="popup-divider">`;
+        // Click opens detail panel instead of popup
+        marker.on('click', () => openDetailPanel(sp));
 
-        // --- Signal section ---
-        const band = document.getElementById('band-select').value;
-        const signalMap = band === '2g' ? sp.signals_2g : band === '5g' ? sp.signals_5g : sp.signals_any;
-
-        DATA.main_ssids.forEach(ssid => {
-            const rssi = signalMap[ssid];
-            if (rssi !== undefined) {
-                html += `<div class="popup-signal"><span class="ssid">${SSID_PREFIX ? ssid.replace(SSID_PREFIX,'') : ssid}</span>`;
-                html += `<span class="rssi ${rssiClass(rssi)}">${Math.round(rssi)} dBm</span></div>`;
-            }
-        });
-
-        // --- Interference section ---
-        const cci = sp.interference;
-        if (cci) {
-            const bandData = band === '2g' ? cci.band_2g : band === '5g' ? cci.band_5g : null;
-            const maxCCI = bandData ? bandData.max_cci : cci.max_cci;
-            const worstSIR = bandData ? bandData.worst_sir : cci.worst_sir;
-            const groups = bandData ? (bandData.overlap_groups || []) :
-                [...(cci.band_2g.overlap_groups || []), ...(cci.band_5g.overlap_groups || [])];
-
-            html += `<hr class="popup-divider">`;
-            html += `<div class="popup-section-title">Co-Channel Interference</div>`;
-
-            if (maxCCI === 0) {
-                html += `<div class="popup-detail"><span class="cci-none">&#9679;</span> No co-channel interference</div>`;
-            } else {
-                html += `<div class="popup-signal"><span class="ssid">Max competing APs</span>`;
-                html += `<span class="rssi ${cciClass(maxCCI)}">${maxCCI}</span></div>`;
-                if (worstSIR !== null) {
-                    html += `<div class="popup-signal"><span class="ssid">Worst SIR</span>`;
-                    html += `<span class="rssi ${worstSIR > 10 ? 'cci-none' : worstSIR > 5 ? 'cci-moderate' : 'cci-severe'}">${worstSIR} dB</span></div>`;
-                }
-
-                const seen = new Set();
-                const uniqueGroups = groups.filter(g => {
-                    const key = g.ap.mac;
-                    if (seen.has(key)) return false;
-                    seen.add(key);
-                    return true;
-                }).sort((a, b) => b.competing - a.competing);
-
-                if (uniqueGroups.length) {
-                    html += `<div class="popup-networks" style="margin-top:4px">`;
-                    uniqueGroups.forEach(g => {
-                        const ap = g.ap;
-                        const widthLabel = ap.width.replace('MHZ_', '') + ' MHz';
-                        html += `<div class="popup-cci-ch">`;
-                        html += `<div class="ch-header">AP *:${ap.mac} Ch ${ap.ch} (${widthLabel}, ${ap.freq_lo}-${ap.freq_hi} MHz)`;
-                        html += ` <span class="rssi">${ap.rssi} dBm</span></div>`;
-                        html += `<div style="padding-left:8px;font-size:11px">`;
-                        html += `<span class="${cciClass(g.competing)}">${g.competing} interferer${g.competing > 1 ? 's' : ''}</span>`;
-                        html += ` SIR: <span class="${g.sir > 10 ? 'cci-none' : g.sir > 5 ? 'cci-moderate' : 'cci-severe'}">${g.sir} dB</span>`;
-                        html += `</div>`;
-                        g.interferers.forEach(intf => {
-                            const iWidth = intf.width.replace('MHZ_', '') + ' MHz';
-                            html += `<div class="popup-cci-ap">*:${intf.mac} Ch ${intf.ch} (${iWidth}) ${intf.rssi} dBm</div>`;
-                        });
-                        html += `</div>`;
-                    });
-                    html += `</div>`;
-                }
-            }
-        }
-
-        // --- Other networks ---
-        const otherSignals = Object.entries(signalMap).filter(([k]) => !DATA.main_ssids.includes(k));
-        if (otherSignals.length) {
-            html += `<hr class="popup-divider">`;
-            html += `<div class="popup-detail" style="margin-bottom:2px">Other networks (${otherSignals.length})</div>`;
-            html += `<div class="popup-networks">`;
-            otherSignals.sort((a, b) => b[1] - a[1]).forEach(([ssid, rssi]) => {
-                html += `<div class="popup-net-row"><span>${ssid}</span>`;
-                html += `<span class="rssi ${rssiClass(rssi)}">${Math.round(rssi)}</span></div>`;
-            });
-            html += `</div>`;
-        }
-
-        // --- BSSIDs for selected SSID ---
-        const selectedSSID = ssidSelect.value;
-        if (selectedSSID !== '__ALL__') {
-            const bssids = sp.networks.filter(n => n.ssid === selectedSSID);
-            if (bssids.length) {
-                html += `<hr class="popup-divider">`;
-                html += `<div class="popup-detail" style="margin-bottom:2px">APs for ${selectedSSID} (${bssids.length})</div>`;
-                html += `<div class="popup-networks">`;
-                bssids.sort((a, b) => b.rssi - a.rssi).forEach(n => {
-                    html += `<div class="popup-net-row">`;
-                    html += `<span class="bssid">${n.bssid}</span>`;
-                    html += `<span class="rssi ${rssiClass(n.rssi)}">${Math.round(n.rssi)} ${n.band} ch${n.channel}</span>`;
-                    html += `</div>`;
-                });
-                html += `</div>`;
-            }
-        }
-
-        marker.bindPopup(html, { maxWidth: 350, maxHeight: 450 });
-
-        // Tooltip
+        // Tooltip on hover
         let tooltipText;
         if (viewMode === 'cci') {
             tooltipText = `#${sp.id}: ${p.cci} competing APs`;
@@ -601,7 +751,8 @@ function createPointMarkers() {
     });
 }
 
-// --- Signal helpers ---
+// ── Signal helpers ──────────────────────────────────────────────────────
+
 function getFilteredPoints() {
     const ssid = ssidSelect.value;
     const band = document.getElementById('band-select').value;
@@ -657,14 +808,16 @@ function cciClass(cci) {
     return 'cci-severe';
 }
 
-// --- Legend visibility ---
+// ── Legend visibility ───────────────────────────────────────────────────
+
 function updateLegend() {
     const mode = document.getElementById('view-mode').value;
     document.getElementById('legend-signal').classList.toggle('active', mode === 'signal');
     document.getElementById('legend-cci').classList.toggle('active', mode === 'cci');
 }
 
-// --- Event handlers ---
+// ── Event handlers ──────────────────────────────────────────────────────
+
 function refresh() {
     updateLegend();
     createPointMarkers();
@@ -689,6 +842,9 @@ document.getElementById('toggle-points').addEventListener('change', function() {
     if (this.checked) pointMarkers.addTo(map);
     else map.removeLayer(pointMarkers);
 });
+
+// Close panel when clicking on map background
+map.on('click', closeDetailPanel);
 
 // Initial render
 updateLegend();
