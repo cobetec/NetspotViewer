@@ -562,6 +562,11 @@ function setupMapForZone() {
     if (imageOverlay) map.removeLayer(imageOverlay);
     const bounds = [[0, 0], [IMG_H, IMG_W]];
     imageOverlay = L.imageOverlay(z.imageDataUrl, bounds).addTo(map);
+    // Clear heatmap immediately to prevent bleed from previous zone
+    if (heatmapLayer && heatmapLayer._canvas) {
+        const ctx = heatmapLayer._canvas.getContext('2d');
+        ctx.clearRect(0, 0, heatmapLayer._canvas.width, heatmapLayer._canvas.height);
+    }
     map.fitBounds(bounds);
     clearScaleState();
     rebuildWalls();
@@ -654,9 +659,13 @@ map.on('dblclick', (e) => {
 map.on('mousemove', (e) => {
     if (!zone()) return;
     const [px, py] = toPixel(e.latlng);
-    const coordText = zone().scale
+    let coordText = zone().scale
         ? `${(px / zone().scale).toFixed(1)}m, ${(py / zone().scale).toFixed(1)}m  (${Math.round(px)}, ${Math.round(py)} px)`
         : `${Math.round(px)}, ${Math.round(py)} px`;
+    if (heatmapLayer) {
+        const sig = computeSignalAt(px, py);
+        if (sig !== null) coordText += `  |  ${sig} dBm`;
+    }
     document.getElementById('status-coords').textContent = coordText;
 
     // Temp wall line
@@ -889,6 +898,42 @@ function segmentsIntersect(ax,ay,bx,by,cx,cy,dx,dy) {
 
 function getHeatmapOpacity() {
     return parseInt(document.getElementById('heatmap-opacity').value) / 100;
+}
+
+function computeSignalAt(px, py) {
+    const z = zone();
+    if (!z || !z.scale || z.aps.length === 0) return null;
+    const band = document.getElementById('band-select').value;
+    const coordScale = z.scale;
+    const mapY = IMG_H - py;
+    const aps = [];
+    for (const ap of z.aps) {
+        if (band === '2g' || band === 'both') {
+            if (ap.radios['2g']) aps.push({ px: ap.px, py: IMG_H - ap.py, power: ap.radios['2g'].power, freqLoss: 40.2 });
+        }
+        if (band === '5g' || band === 'both') {
+            if (ap.radios['5g']) aps.push({ px: ap.px, py: IMG_H - ap.py, power: ap.radios['5g'].power, freqLoss: 46.8 });
+        }
+    }
+    if (aps.length === 0) return null;
+    const walls = z.walls.map(w => ({
+        x1: w.start[0], y1: IMG_H - w.start[1],
+        x2: w.end[0], y2: IMG_H - w.end[1],
+        absorption: w.absorption,
+    }));
+    let best = -120;
+    for (const ap of aps) {
+        const dx = px - ap.px, dy = mapY - ap.py;
+        const distM = Math.max(1, Math.sqrt(dx*dx + dy*dy) / coordScale);
+        const fspl = 28 * Math.log10(distM) + ap.freqLoss;
+        let wl = 0;
+        for (const w of walls) {
+            if (segmentsIntersect(ap.px, ap.py, px, mapY, w.x1, w.y1, w.x2, w.y2)) wl += w.absorption;
+        }
+        const sig = ap.power + 3 - fspl - wl;
+        if (sig > best) best = sig;
+    }
+    return Math.round(best);
 }
 
 const HeatmapLayer = L.Layer.extend({
