@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WiFi Planning</title>
+<link rel="stylesheet" href="leaflet.css" />
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; height: 100vh; background: #1a1a2e; color: #e0e0e0; }
+
+/* Sidebar */
+#sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: #16213e;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    border-right: 1px solid #0f3460;
+    z-index: 1000;
+}
+#sidebar h1 { font-size: 16px; color: #e94560; margin-bottom: 2px; }
+#sidebar h2 { font-size: 12px; font-weight: 400; color: #8899aa; margin-bottom: 4px; }
+.control-group { background: #1a1a2e; border-radius: 8px; padding: 12px; }
+.control-group label { display: block; font-size: 12px; font-weight: 600; color: #aabbcc; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.control-group select, .control-group input[type="range"] { width: 100%; padding: 6px 8px; border-radius: 4px; border: 1px solid #0f3460; background: #16213e; color: #e0e0e0; font-size: 13px; }
+.control-group select:focus { outline: none; border-color: #e94560; }
+
+/* Toggle switches */
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
+.toggle-row span { font-size: 13px; }
+.toggle { position: relative; width: 40px; height: 22px; cursor: pointer; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle .slider { position: absolute; inset: 0; background: #333; border-radius: 22px; transition: 0.2s; }
+.toggle .slider::before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; bottom: 3px; background: #888; border-radius: 50%; transition: 0.2s; }
+.toggle input:checked + .slider { background: #e94560; }
+.toggle input:checked + .slider::before { transform: translateX(18px); background: #fff; }
+
+/* Legend */
+.legend { display: flex; flex-direction: column; gap: 3px; }
+.legend-bar { height: 16px; border-radius: 3px; background: linear-gradient(to right, #d32f2f, #f57c00, #fbc02d, #4caf50, #1b5e20); }
+.legend-labels { display: flex; justify-content: space-between; font-size: 10px; color: #8899aa; }
+
+/* AP list */
+.ap-list { max-height: 260px; overflow-y: auto; }
+.ap-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 4px; cursor: pointer;
+    font-size: 12px; transition: background 0.15s;
+}
+.ap-item:hover { background: rgba(233,69,96,0.1); }
+.ap-item .ap-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.ap-item .ap-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-item .ap-info { color: #667788; font-size: 11px; font-family: Consolas, monospace; }
+
+/* Stats */
+#stats { font-size: 11px; color: #8899aa; line-height: 1.6; }
+#stats b { color: #aabbcc; }
+
+/* Map */
+#map { flex: 1; background: #111; }
+
+/* Loading overlay */
+#loading { position: fixed; inset: 0; background: #1a1a2e; display: flex; align-items: center; justify-content: center; z-index: 9999; font-size: 18px; color: #e94560; }
+
+/* AP marker icon */
+.ap-marker-icon {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    cursor: grab; user-select: none;
+}
+.ap-marker-icon:active { cursor: grabbing; }
+.ap-marker-dot {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: #fff; font-weight: bold;
+}
+.ap-marker-label {
+    background: rgba(0,0,0,0.7); color: #fff; padding: 1px 5px;
+    border-radius: 3px; font-size: 10px; white-space: nowrap;
+    max-width: 100px; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Detail Panel (right slide-in) ── */
+#detail-panel {
+    position: fixed; top: 0; right: 0;
+    width: 380px; height: 100vh;
+    background: #16213e; border-left: 2px solid #0f3460;
+    z-index: 2000; transform: translateX(100%);
+    transition: transform 0.25s ease;
+    display: flex; flex-direction: column;
+    box-shadow: -4px 0 20px rgba(0,0,0,0.5);
+}
+#detail-panel.open { transform: translateX(0); }
+
+.dp-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid #0f3460;
+    background: #1a1a2e; flex-shrink: 0;
+}
+.dp-header h3 { font-size: 16px; color: #e94560; }
+.dp-header .dp-sub { font-size: 12px; color: #8899aa; margin-top: 2px; }
+.dp-close {
+    background: none; border: 1px solid #334; color: #8899aa;
+    font-size: 18px; width: 32px; height: 32px; border-radius: 6px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.dp-close:hover { background: #e94560; color: #fff; border-color: #e94560; }
+
+.dp-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+
+.dp-section { margin-bottom: 20px; }
+.dp-section-title {
+    font-size: 11px; font-weight: 700; color: #e94560;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 10px; padding-bottom: 6px;
+    border-bottom: 1px solid #0f3460;
+}
+
+.dp-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 10px; background: #1a1a2e; border-radius: 6px; margin-bottom: 4px;
+}
+.dp-label { font-size: 13px; color: #aabbcc; }
+.dp-val { font-size: 13px; font-weight: 600; font-family: Consolas, monospace; color: #e0e0e0; }
+
+/* Wall material colors */
+.wall-concrete { color: #f57c00; }
+.wall-drywall { color: #fbc02d; }
+.wall-glass { color: #4fc3f7; }
+.wall-wood { color: #a1887f; }
+.wall-metal { color: #90a4ae; }
+.wall-default { color: #78909c; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div>
+        <h1>WiFi Planning</h1>
+        <h2 id="project-name">Loading...</h2>
+    </div>
+
+    <div class="control-group" id="zone-group" style="display:none">
+        <label>Zone</label>
+        <select id="zone-select"></select>
+    </div>
+
+    <div class="control-group" id="snapshot-group" style="display:none">
+        <label>Scenario</label>
+        <select id="snapshot-select"></select>
+    </div>
+
+    <div class="control-group">
+        <label>Band</label>
+        <select id="band-select">
+            <option value="5g">5 GHz</option>
+            <option value="2g">2.4 GHz</option>
+            <option value="both">Both (best signal)</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>Layers</label>
+        <div class="toggle-row">
+            <span>Heatmap</span>
+            <label class="toggle"><input type="checkbox" id="toggle-heatmap" checked><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+            <span>Access Points</span>
+            <label class="toggle"><input type="checkbox" id="toggle-aps" checked><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+            <span>Walls</span>
+            <label class="toggle"><input type="checkbox" id="toggle-walls" checked><span class="slider"></span></label>
+        </div>
+    </div>
+
+    <div class="control-group">
+        <label>Heatmap Opacity</label>
+        <input type="range" id="heatmap-opacity" min="0" max="100" value="55">
+    </div>
+
+    <div class="control-group">
+        <label>Signal Strength (dBm)</label>
+        <div class="legend">
+            <div class="legend-bar"></div>
+            <div class="legend-labels">
+                <span>-90</span><span>-80</span><span>-70</span><span>-60</span><span>-50</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="control-group" id="ap-list-group">
+        <label>Access Points (<span id="ap-count">0</span>)</label>
+        <div class="ap-list" id="ap-list"></div>
+    </div>
+
+    <div id="stats"></div>
+</div>
+
+<div id="map"></div>
+<div id="loading">Loading planning data...</div>
+
+<!-- Detail panel (slide-in from right) -->
+<div id="detail-panel">
+    <div class="dp-header">
+        <div>
+            <h3 id="dp-title"></h3>
+            <div class="dp-sub" id="dp-sub"></div>
+        </div>
+        <button class="dp-close" id="dp-close">&times;</button>
+    </div>
+    <div class="dp-body" id="dp-body"></div>
+</div>
+
+<script src="leaflet.js"></script>
+<script src="data.js"></script>
+<script>
+(function() {
+
+document.getElementById('loading').style.display = 'none';
+
+// ── State ────────────────────────────────────────────────────────────────
+
+let currentZoneIdx = 0;
+let currentZone = DATA.zones[0];
+let currentSnapIdx = 0;
+let IMG_W = currentZone.image.width;
+let IMG_H = currentZone.image.height;
+let imageOverlay = null;
+
+// Current AP data (may be modified by dragging)
+let currentAPs = [];
+
+// ── Sidebar setup ────────────────────────────────────────────────────────
+
+document.getElementById('project-name').textContent = DATA.project.name;
+document.title = 'WiFi Planning - ' + DATA.project.name;
+
+// Zone selector
+const zoneSelect = document.getElementById('zone-select');
+if (DATA.zones.length > 1) {
+    document.getElementById('zone-group').style.display = '';
+    DATA.zones.forEach((z, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = z.name;
+        zoneSelect.appendChild(opt);
+    });
+}
+
+// Snapshot selector
+const snapshotSelect = document.getElementById('snapshot-select');
+
+function populateSnapshots() {
+    snapshotSelect.innerHTML = '';
+    const snaps = currentZone.snapshots;
+    if (snaps.length > 1) {
+        document.getElementById('snapshot-group').style.display = '';
+    } else {
+        document.getElementById('snapshot-group').style.display = 'none';
+    }
+    snaps.forEach((s, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = s.name;
+        snapshotSelect.appendChild(opt);
+    });
+    currentSnapIdx = 0;
+}
+populateSnapshots();
+
+function updateStats() {
+    const snap = currentZone.snapshots[currentSnapIdx];
+    const aps = snap ? snap.aps : [];
+    const walls = currentZone.walls;
+    let html = '';
+    html += `<b>Zone:</b> ${currentZone.name}<br>`;
+    html += `<b>APs:</b> ${aps.length}<br>`;
+    html += `<b>Walls:</b> ${walls.length}<br>`;
+    html += `<b>Image:</b> ${IMG_W} x ${IMG_H} px<br>`;
+    html += `<b>Scale:</b> ${currentZone.coord_scale.toFixed(2)} px/m`;
+    document.getElementById('stats').innerHTML = html;
+}
+updateStats();
+
+// ── Leaflet map ──────────────────────────────────────────────────────────
+
+const map = L.map('map', {
+    crs: L.CRS.Simple,
+    minZoom: -2,
+    maxZoom: 4,
+    zoomSnap: 0.25,
+    zoomDelta: 0.5,
+    attributionControl: false,
+});
+
+function setMapZone() {
+    if (imageOverlay) map.removeLayer(imageOverlay);
+    const bounds = [[0, 0], [IMG_H, IMG_W]];
+    imageOverlay = L.imageOverlay(currentZone.map_file, bounds).addTo(map);
+    map.fitBounds(bounds);
+}
+setMapZone();
+
+// ── Detail Panel ─────────────────────────────────────────────────────────
+
+const detailPanel = document.getElementById('detail-panel');
+
+function closeDetailPanel() {
+    detailPanel.classList.remove('open');
+}
+document.getElementById('dp-close').addEventListener('click', closeDetailPanel);
+
+function openAPDetail(ap) {
+    document.getElementById('dp-title').textContent = ap.alias;
+    document.getElementById('dp-sub').textContent = 'Model: ' + ap.model;
+
+    let html = '';
+
+    // Position
+    html += '<div class="dp-section">';
+    html += '<div class="dp-section-title">Position</div>';
+    html += '<div class="dp-row"><span class="dp-label">X (meters)</span><span class="dp-val">' + ap.x.toFixed(2) + '</span></div>';
+    html += '<div class="dp-row"><span class="dp-label">Y (meters)</span><span class="dp-val">' + ap.y.toFixed(2) + '</span></div>';
+    html += '<div class="dp-row"><span class="dp-label">X (pixels)</span><span class="dp-val">' + ap.px.toFixed(1) + '</span></div>';
+    html += '<div class="dp-row"><span class="dp-label">Y (pixels)</span><span class="dp-val">' + ap.py.toFixed(1) + '</span></div>';
+    html += '<div class="dp-row"><span class="dp-label">Height</span><span class="dp-val">' + ap.height.toFixed(1) + ' m</span></div>';
+    html += '</div>';
+
+    // 2.4 GHz Radio
+    if (ap.radios['2g']) {
+        const r = ap.radios['2g'];
+        html += '<div class="dp-section">';
+        html += '<div class="dp-section-title">2.4 GHz Radio</div>';
+        html += '<div class="dp-row"><span class="dp-label">Channel</span><span class="dp-val">' + r.channel + '</span></div>';
+        html += '<div class="dp-row"><span class="dp-label">TX Power</span><span class="dp-val">' + r.power + ' dBm</span></div>';
+        html += '<div class="dp-row"><span class="dp-label">Width</span><span class="dp-val">' + (r.width || '').replace('MHZ_', '') + ' MHz</span></div>';
+        html += '</div>';
+    }
+
+    // 5 GHz Radio
+    if (ap.radios['5g']) {
+        const r = ap.radios['5g'];
+        html += '<div class="dp-section">';
+        html += '<div class="dp-section-title">5 GHz Radio</div>';
+        html += '<div class="dp-row"><span class="dp-label">Channel</span><span class="dp-val">' + r.channel + '</span></div>';
+        html += '<div class="dp-row"><span class="dp-label">TX Power</span><span class="dp-val">' + r.power + ' dBm</span></div>';
+        html += '<div class="dp-row"><span class="dp-label">Width</span><span class="dp-val">' + (r.width || '').replace('MHZ_', '') + ' MHz</span></div>';
+        html += '</div>';
+    }
+
+    document.getElementById('dp-body').innerHTML = html;
+    detailPanel.classList.add('open');
+}
+
+// ── Color helpers ────────────────────────────────────────────────────────
+
+function rssiToRGB(rssi) {
+    const t = Math.max(0, Math.min(1, (rssi + 90) / 40));
+    let r, g, b;
+    if (t < 0.2) {
+        const s = t / 0.2;
+        r = 200 + 45*s; g = 30 + 70*s; b = 30 - 20*s;
+    } else if (t < 0.4) {
+        const s = (t - 0.2) / 0.2;
+        r = 245; g = 100 + 100*s; b = 10 + 20*s;
+    } else if (t < 0.6) {
+        const s = (t - 0.4) / 0.2;
+        r = 245 - 20*s; g = 200 + 30*s; b = 30 + 10*s;
+    } else if (t < 0.8) {
+        const s = (t - 0.6) / 0.2;
+        r = 225 - 110*s; g = 230 - 10*s; b = 40 - 10*s;
+    } else {
+        const s = (t - 0.8) / 0.2;
+        r = 115 - 80*s; g = 220 - 30*s; b = 30 + 10*s;
+    }
+    return [Math.round(Math.max(0,Math.min(255,r))), Math.round(Math.max(0,Math.min(255,g))), Math.round(Math.max(0,Math.min(255,b)))];
+}
+
+function rssiToColor(rssi) {
+    const [r, g, b] = rssiToRGB(rssi);
+    return '#' + [r,g,b].map(c => c.toString(16).padStart(2,'0')).join('');
+}
+
+// AP colors by model hash (consistent color per model ID)
+const AP_COLORS = ['#4fc3f7', '#81c784', '#ffb74d', '#f06292', '#ba68c8', '#4db6ac', '#e57373', '#64b5f6'];
+function apColor(model) {
+    return AP_COLORS[Math.abs(model) % AP_COLORS.length];
+}
+
+// Wall material colors
+function wallColor(wall) {
+    if (wall.color && wall.color.length >= 7) {
+        // Parse #AARRGGBB or #RRGGBB format
+        const c = wall.color.replace(/^#/, '');
+        if (c.length === 8) return '#' + c.substring(2); // skip alpha
+        return '#' + c;
+    }
+    return '#5c5c5c';
+}
+
+// ── Line-segment intersection (for wall detection) ───────────────────────
+
+function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+    const det = (bx-ax)*(dy-cy) - (by-ay)*(dx-cx);
+    if (Math.abs(det) < 1e-10) return false;
+    const t = ((cx-ax)*(dy-cy) - (cy-ay)*(dx-cx)) / det;
+    const u = ((cx-ax)*(by-ay) - (cy-ay)*(bx-ax)) / det;
+    return t > 0 && t < 1 && u > 0 && u < 1;
+}
+
+// ── Predictive Heatmap Layer (FSPL + wall attenuation) ───────────────────
+
+const HeatmapLayer = L.Layer.extend({
+    onAdd(map) {
+        this._map = map;
+        this._canvas = L.DomUtil.create('canvas', 'leaflet-heatmap-layer');
+        this._canvas.style.position = 'absolute';
+        this._canvas.style.pointerEvents = 'none';
+        map.getPanes().overlayPane.appendChild(this._canvas);
+        map.on('moveend zoomend resize', this._update, this);
+        this._update();
+    },
+    onRemove(map) {
+        L.DomUtil.remove(this._canvas);
+        map.off('moveend zoomend resize', this._update, this);
+    },
+    _update() {
+        if (!this._map) return;
+        const size = this._map.getSize();
+        this._canvas.width = size.x;
+        this._canvas.height = size.y;
+        const topLeft = this._map.containerPointToLayerPoint([0, 0]);
+        L.DomUtil.setPosition(this._canvas, topLeft);
+        this.draw();
+    },
+    draw() {
+        const ctx = this._canvas.getContext('2d');
+        const W = this._canvas.width;
+        const H = this._canvas.height;
+        ctx.clearRect(0, 0, W, H);
+
+        const band = document.getElementById('band-select').value;
+        const opacity = document.getElementById('heatmap-opacity').value / 100;
+        const coordScale = currentZone.coord_scale;
+
+        // Get APs filtered by band
+        const aps = getFilteredAPs(band);
+        if (aps.length === 0) return;
+
+        // Pre-compute wall segments in pixel coordinates (Leaflet Y-flipped)
+        const walls = currentZone.walls.map(w => ({
+            x1: w.start[0], y1: IMG_H - w.start[1],
+            x2: w.end[0],   y2: IMG_H - w.end[1],
+            absorption: w.absorption,
+        }));
+
+        // Determine grid step based on zoom
+        const zoom = this._map.getZoom();
+        const step = zoom >= 1 ? 2 : zoom >= 0 ? 4 : zoom >= -1 ? 6 : 8;
+
+        // Compute bounds of the floor plan in screen coordinates
+        const imgTopLeft = this._map.latLngToContainerPoint([IMG_H, 0]);
+        const imgBotRight = this._map.latLngToContainerPoint([0, IMG_W]);
+        const minX = Math.max(0, Math.floor(imgTopLeft.x));
+        const maxX = Math.min(W, Math.ceil(imgBotRight.x));
+        const minY = Math.max(0, Math.floor(imgTopLeft.y));
+        const maxY = Math.min(H, Math.ceil(imgBotRight.y));
+
+        if (maxX <= minX || maxY <= minY) return;
+
+        // Convert APs to screen coordinates
+        const screenAPs = aps.map(ap => {
+            const sp = this._map.latLngToContainerPoint([IMG_H - ap.py, ap.px]);
+            return { sx: sp.x, sy: sp.y, px: ap.px, py: IMG_H - ap.py, power: ap.power, freqLoss: ap.freqLoss };
+        });
+
+        const imgData = ctx.createImageData(W, H);
+        const data = imgData.data;
+
+        for (let py = minY; py < maxY; py += step) {
+            for (let px = minX; px < maxX; px += step) {
+                // Convert screen pixel to map coordinates
+                const latlng = this._map.containerPointToLatLng([px, py]);
+                const mapX = latlng.lng;  // pixel X in image space
+                const mapY = latlng.lat;  // pixel Y in flipped image space
+
+                // Skip if outside image bounds
+                if (mapX < 0 || mapX > IMG_W || mapY < 0 || mapY > IMG_H) continue;
+
+                let bestSignal = -120;
+
+                for (const ap of screenAPs) {
+                    // Distance in pixels, convert to meters
+                    const dxPx = mapX - ap.px;
+                    const dyPx = mapY - ap.py;
+                    const distPx = Math.sqrt(dxPx*dxPx + dyPx*dyPx);
+                    const distM = Math.max(1, distPx / coordScale);
+
+                    // FSPL
+                    const fspl = 20 * Math.log10(distM) + ap.freqLoss;
+
+                    // Wall attenuation - count intersections
+                    let wallLoss = 0;
+                    for (const w of walls) {
+                        if (segmentsIntersect(ap.px, ap.py, mapX, mapY, w.x1, w.y1, w.x2, w.y2)) {
+                            wallLoss += w.absorption;
+                        }
+                    }
+
+                    const signal = ap.power + 5 - fspl - wallLoss; // +5 dBi antenna gain
+                    if (signal > bestSignal) bestSignal = signal;
+                }
+
+                const [r, g, b] = rssiToRGB(bestSignal);
+                const alpha = Math.round(opacity * 220);
+
+                for (let dy = 0; dy < step && py+dy < maxY; dy++) {
+                    for (let dx = 0; dx < step && px+dx < maxX; dx++) {
+                        const idx = ((py+dy) * W + (px+dx)) * 4;
+                        data[idx] = r;
+                        data[idx+1] = g;
+                        data[idx+2] = b;
+                        data[idx+3] = alpha;
+                    }
+                }
+            }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+    },
+});
+
+function getFilteredAPs(band) {
+    const result = [];
+    for (const ap of currentAPs) {
+        if (band === '2g') {
+            if (ap.radios['2g']) {
+                result.push({
+                    px: ap.px, py: ap.py,
+                    power: ap.radios['2g'].power,
+                    freqLoss: 40.2,  // 20*log10(2437) - 27.55
+                });
+            }
+        } else if (band === '5g') {
+            if (ap.radios['5g']) {
+                result.push({
+                    px: ap.px, py: ap.py,
+                    power: ap.radios['5g'].power,
+                    freqLoss: 46.8,  // 20*log10(5200) - 27.55
+                });
+            }
+        } else {
+            // Both - add each radio separately
+            if (ap.radios['2g']) {
+                result.push({
+                    px: ap.px, py: ap.py,
+                    power: ap.radios['2g'].power,
+                    freqLoss: 40.2,
+                });
+            }
+            if (ap.radios['5g']) {
+                result.push({
+                    px: ap.px, py: ap.py,
+                    power: ap.radios['5g'].power,
+                    freqLoss: 46.8,
+                });
+            }
+        }
+    }
+    return result;
+}
+
+const heatmapLayer = new HeatmapLayer();
+heatmapLayer.addTo(map);
+
+// ── Wall layer ───────────────────────────────────────────────────────────
+
+const wallLayer = L.layerGroup().addTo(map);
+
+function createWallLines() {
+    wallLayer.clearLayers();
+    currentZone.walls.forEach(w => {
+        const color = wallColor(w);
+        const line = L.polyline(
+            [[IMG_H - w.start[1], w.start[0]], [IMG_H - w.end[1], w.end[0]]],
+            { color: color, weight: 3, opacity: 0.6 }
+        );
+        line.bindTooltip('Wall #' + w.id + ' | ' + w.absorption + ' dB absorption', { sticky: true });
+        wallLayer.addLayer(line);
+    });
+}
+
+// ── AP markers (draggable) ───────────────────────────────────────────────
+
+const apMarkerLayer = L.layerGroup().addTo(map);
+let apMarkers = [];
+
+function createAPMarkers() {
+    apMarkerLayer.clearLayers();
+    apMarkers = [];
+
+    const snap = currentZone.snapshots[currentSnapIdx];
+    if (!snap) return;
+
+    // Deep copy APs so we can modify positions
+    currentAPs = snap.aps.map(ap => JSON.parse(JSON.stringify(ap)));
+
+    currentAPs.forEach((ap, idx) => {
+        const color = apColor(ap.model);
+        const icon = L.divIcon({
+            className: '',
+            html: '<div class="ap-marker-icon">'
+                + '<div class="ap-marker-dot" style="background:' + color + '">AP</div>'
+                + '<div class="ap-marker-label">' + escHtml(ap.alias) + '</div>'
+                + '</div>',
+            iconSize: [80, 36],
+            iconAnchor: [40, 10],
+        });
+
+        const marker = L.marker([IMG_H - ap.py, ap.px], {
+            icon: icon,
+            draggable: true,
+            bubblingMouseEvents: false,
+        });
+
+        marker.on('click', () => openAPDetail(ap));
+
+        marker.on('dragend', function(e) {
+            const pos = e.target.getLatLng();
+            ap.px = pos.lng;
+            ap.py = IMG_H - pos.lat;
+            ap.x = ap.px / currentZone.coord_scale;
+            ap.y = ap.py / currentZone.coord_scale;
+
+            // Update detail panel if open
+            if (detailPanel.classList.contains('open')) {
+                openAPDetail(ap);
+            }
+
+            // Recalculate heatmap
+            heatmapLayer._update();
+        });
+
+        apMarkerLayer.addLayer(marker);
+        apMarkers.push({ marker, ap });
+    });
+
+    // Update AP list in sidebar
+    updateAPList();
+    document.getElementById('ap-count').textContent = currentAPs.length;
+}
+
+function updateAPList() {
+    const list = document.getElementById('ap-list');
+    list.innerHTML = '';
+    currentAPs.forEach((ap, idx) => {
+        const color = apColor(ap.model);
+        const bands = [];
+        if (ap.radios['2g']) bands.push('2.4G');
+        if (ap.radios['5g']) bands.push('5G');
+
+        const item = document.createElement('div');
+        item.className = 'ap-item';
+        item.innerHTML = '<div class="ap-dot" style="background:' + color + '"></div>'
+            + '<span class="ap-name">' + escHtml(ap.alias) + '</span>'
+            + '<span class="ap-info">' + bands.join('/') + '</span>';
+        item.addEventListener('click', () => {
+            const m = apMarkers[idx];
+            map.setView(m.marker.getLatLng(), 1);
+            openAPDetail(ap);
+        });
+        list.appendChild(item);
+    });
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Zone/Snapshot switching ──────────────────────────────────────────────
+
+function switchZone(idx) {
+    currentZoneIdx = idx;
+    currentZone = DATA.zones[idx];
+    IMG_W = currentZone.image.width;
+    IMG_H = currentZone.image.height;
+    setMapZone();
+    populateSnapshots();
+    updateStats();
+    closeDetailPanel();
+    createWallLines();
+    createAPMarkers();
+    heatmapLayer._update();
+}
+
+function switchSnapshot(idx) {
+    currentSnapIdx = idx;
+    updateStats();
+    closeDetailPanel();
+    createAPMarkers();
+    heatmapLayer._update();
+}
+
+// ── Event handlers ───────────────────────────────────────────────────────
+
+zoneSelect.addEventListener('change', function() {
+    switchZone(parseInt(this.value));
+});
+
+snapshotSelect.addEventListener('change', function() {
+    switchSnapshot(parseInt(this.value));
+});
+
+document.getElementById('band-select').addEventListener('change', () => heatmapLayer._update());
+document.getElementById('heatmap-opacity').addEventListener('input', () => heatmapLayer._update());
+
+document.getElementById('toggle-heatmap').addEventListener('change', function() {
+    if (this.checked) heatmapLayer.addTo(map);
+    else map.removeLayer(heatmapLayer);
+});
+
+document.getElementById('toggle-aps').addEventListener('change', function() {
+    if (this.checked) apMarkerLayer.addTo(map);
+    else map.removeLayer(apMarkerLayer);
+});
+
+document.getElementById('toggle-walls').addEventListener('change', function() {
+    if (this.checked) wallLayer.addTo(map);
+    else map.removeLayer(wallLayer);
+});
+
+map.on('click', closeDetailPanel);
+
+// ── Initial render ───────────────────────────────────────────────────────
+
+createWallLines();
+createAPMarkers();
+
+})();
+</script>
+</body>
+</html>
